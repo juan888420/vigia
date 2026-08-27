@@ -1,0 +1,551 @@
+// ─────────────────────────────────────────────────────────────────────────────
+// Vigía — modelo de dominio para control y seguimiento contractual
+//
+// PRINCIPIOS QUE RIGEN ESTE SCHEMA (ver README.md → "Principio automation-first")
+//
+//   1. La base de datos es la fuente de verdad. Las carpetas y los nombres de
+//      archivo son una representación organizada, nunca el modelo de negocio.
+//   2. Los valores VIGENTES (valor actual, fecha de terminación actual, saldo)
+//      NO se almacenan: se derivan del historial de eventos mediante el motor
+//      de reglas. Guardarlos como columnas escribibles permitiría que se
+//      desincronicen del historial que deben resumir.
+//   3. Ningún campo de este schema es escrito directamente por una IA. Los
+//      campos `source` / `aiConfidence` / `validatedById` existen justamente
+//      para que una sugerencia de IA no pueda convertirse en dato sin que un
+//      usuario la valide.
+//   4. El estado del contrato ("al día" / "requiere atención") no es una
+//      columna: es el resultado de aplicar reglas determinísticas sobre estos
+//      datos. Ver "Decisión pendiente #1" en el README.
+// ─────────────────────────────────────────────────────────────────────────────
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ORGANIZACIÓN
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// Entidad/oficina propietaria de los expedientes. Existe desde el día 1 aunque
+/// el MVP sirva a una sola oficina: agregar esta FK ahora cuesta nada; agregarla
+/// después obligaría a migrar datos reales en producción y a revisar cada query.
+/// Deliberadamente NO incluye roles, permisos ni facturación (fuera del MVP).
+model Office {
+  id        String   @id @default(cuid())
+  name      String /// "Alcaldía de Angelópolis"
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  users     User[]
+  contracts Contract[]
+
+  @@map("offices")
+}
+
+/// Usuario mínimo. Su razón de existir en el MVP es la trazabilidad: saber
+/// quién validó la clasificación de un documento y quién registró un evento.
+model User {
+  id        String   @id @default(cuid())
+  officeId  String
+  email     String   @unique
+  name      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  office             Office             @relation(fields: [officeId], references: [id])
+  validatedDocuments ContractDocument[] @relation("DocumentValidatedBy")
+
+  @@index([officeId])
+  @@map("users")
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// PLANTILLA: QUÉ DOCUMENTOS DEBERÍA TENER UN CONTRATO
+//
+//   ContractType → DocumentRequirement → (DocumentType)
+//
+// Esta es la capa que permite que el MVP arranque solo con CD y que después se
+// agreguen licitación, mínima cuantía, etc. sin tocar código: una modalidad
+// nueva es un ContractType nuevo con sus DocumentRequirement.
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// Modalidad de contratación. El MVP se siembra únicamente con CD.
+model ContractType {
+  id        String   @id @default(cuid())
+  code      String   @unique /// "CD"
+  name      String /// "Contratación directa"
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  requirements DocumentRequirement[]
+  contracts    Contract[]
+
+  @@map("contract_types")
+}
+
+/// Catálogo de tipos documentales, independiente de la modalidad: el mismo
+/// "Acta de inicio" sirve para CD y para licitación. `code` es el ancla estable
+/// del sistema — es lo que la IA propone, lo que el usuario valida y lo que las
+/// reglas consultan. Nunca se depende del nombre del archivo.
+model DocumentType {
+  id          String       @id @default(cuid())
+  code        String       @unique /// "ACTA_INICIO", "CDP", "RP", "INFORME_SUPERVISION"
+  name        String /// "Acta de inicio"
+  stage       ContractStage
+  /// Nombre corto usado al estandarizar el archivo: "CD-001-2025_Acta-Inicio.pdf"
+  fileLabel   String
+  description String?
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  requirements DocumentRequirement[]
+  documents    ContractDocument[]
+
+  @@index([stage])
+  @@map("document_types")
+}
+
+/// Une modalidad + tipo documental: "para un CD, el CDP es obligatorio en la
+/// etapa precontractual". `appliesToEachPayment` cubre el caso real de los
+/// expedientes: los soportes de pago se repiten por cada pago (Pago 1, 2, 3...),
+/// no una sola vez en el contrato.
+model DocumentRequirement {
+  id             String   @id @default(cuid())
+  contractTypeId String
+  documentTypeId String
+  required       Boolean  @default(true)
+  /// Si es true, este requisito se evalúa una vez por cada Payment del contrato.
+  appliesToEachPayment Boolean @default(false)
+  /// Orden de presentación dentro de la etapa.
+  displayOrder   Int      @default(0)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  contractType ContractType @relation(fields: [contractTypeId], references: [id], onDelete: Cascade)
+  documentType DocumentType @relation(fields: [documentTypeId], references: [id])
+  overrides    ContractRequirementOverride[]
+
+  @@unique([contractTypeId, documentTypeId])
+  @@index([contractTypeId])
+  @@map("document_requirements")
+}
+
+/// Excepción por contrato. El cliente fue explícito: "un contrato de obra no
+/// tiene exactamente los mismos requerimientos que uno de suministro" — aun
+/// dentro de la misma modalidad. Sin esto, el checklist marcaría como faltantes
+/// documentos que legítimamente no aplican. Requiere motivo para dejar rastro.
+model ContractRequirementOverride {
+  id            String   @id @default(cuid())
+  contractId    String
+  requirementId String
+  /// false = este documento no aplica a este contrato en particular.
+  required      Boolean
+  reason        String
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  contract    Contract            @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  requirement DocumentRequirement @relation(fields: [requirementId], references: [id], onDelete: Cascade)
+
+  @@unique([contractId, requirementId])
+  @@index([contractId])
+  @@map("contract_requirement_overrides")
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// CONTRATO
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// Un expediente contractual.
+///
+/// Los contratos derivados (los CO-024 / CO-041 que cuelgan de un CD) son
+/// registros Contract con `parentContractId`, no una etapa del padre: en los
+/// expedientes reales cada derivado tiene su propio ciclo precontractual →
+/// contractual → postcontractual, sus propias pólizas y sus propias actas.
+model Contract {
+  id             String   @id @default(cuid())
+  officeId       String
+  contractTypeId String
+  parentContractId String?
+
+  /// Número tal como lo escribe la entidad: "CD-001-2025".
+  number           String
+  /// Forma canónica para búsquedas y unicidad. Los datos reales traen
+  /// "CD-011-2025", "CD013-2026" y "CD-004A-2024": sin normalizar, el mismo
+  /// contrato podría entrar dos veces escrito distinto.
+  normalizedNumber String
+
+  object      String /// Objeto contractual
+  contractor     String? /// Nombre o razón social del contratista
+  contractorId   String? /// NIT o cédula
+  supervisor     String?
+
+  // ── Condiciones INICIALES (inmutables) ─────────────────────────────────
+  // El valor vigente y la fecha de terminación vigente NO viven aquí: se
+  // derivan sumando adiciones, prórrogas y descontando suspensiones. Ver
+  // principio #2 en la cabecera.
+  initialValue    Decimal   @db.Decimal(15, 2)
+  initialTermDays Int? /// Plazo original en días
+  signatureDate   DateTime? @db.Date
+  startDate       DateTime? @db.Date /// Fecha del acta de inicio
+  /// Fecha de terminación pactada originalmente, antes de cualquier prórroga.
+  initialEndDate  DateTime? @db.Date
+
+  /// Anticipo pactado, cuando aplique (CD-001-2025 lo tiene; CD-007-2025 no).
+  advanceValue Decimal? @db.Decimal(15, 2)
+
+  notes     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  office            Office                        @relation(fields: [officeId], references: [id])
+  contractType      ContractType                  @relation(fields: [contractTypeId], references: [id])
+  parentContract    Contract?                     @relation("DerivedContracts", fields: [parentContractId], references: [id])
+  derivedContracts  Contract[]                    @relation("DerivedContracts")
+  budgetRecords     BudgetRecord[]
+  documents         ContractDocument[]
+  events            ContractEvent[]
+  payments          Payment[]
+  guarantees        Guarantee[]
+  alerts            Alert[]
+  requirementOverrides ContractRequirementOverride[]
+
+  @@unique([officeId, normalizedNumber])
+  @@index([officeId])
+  @@index([parentContractId])
+  @@map("contracts")
+}
+
+/// CDP y RP/CRP como filas, no como columnas: los expedientes reales muestran
+/// varios por contrato (CD-001 tiene CRP 178 y 179; CD-007 tiene RP045 y el
+/// RP-00861 de una adición). Como filas, el respaldo presupuestal es sumable y
+/// cada uno puede quedar atado al evento de adición que lo originó.
+model BudgetRecord {
+  id         String           @id @default(cuid())
+  contractId String
+  type       BudgetRecordType
+  number     String /// "00287", "178"
+  value      Decimal          @db.Decimal(15, 2)
+  issuedAt   DateTime?        @db.Date
+  /// Evento de adición que originó este respaldo, si no es el inicial.
+  eventId    String?
+  createdAt  DateTime         @default(now())
+  updatedAt  DateTime         @updatedAt
+
+  contract Contract       @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  event    ContractEvent? @relation(fields: [eventId], references: [id])
+
+  @@index([contractId])
+  @@map("budget_records")
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// EVENTOS CONTRACTUALES (historial)
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// Todo lo que le ocurre a un contrato después de celebrado, como historial.
+///
+/// DECISIÓN: una sola tabla con discriminador `type`, en vez de una tabla por
+/// tipo (Extension, Suspension, Resumption...). Razones concretas:
+///   · La detección de saltos de secuencia ("Otrosí 1, 2, 9 → faltan 3–8") es
+///     una sola consulta ordenada, no seis.
+///   · Un documento se relaciona con "el evento" mediante una FK, sin
+///     relaciones polimórficas contra seis tablas distintas.
+///   · Los campos que varían por tipo son pocos (valueDelta, daysDelta, fechas).
+/// El costo es que algunos campos quedan nulos según el tipo. Se acepta: es
+/// preferible a seis tablas casi idénticas.
+///
+/// Los pagos NO son eventos de esta tabla — ver modelo Payment.
+model ContractEvent {
+  id         String    @id @default(cuid())
+  contractId String
+  type       EventType
+
+  /// Número del acto: Otrosí 01, Suspensión 02. Nulo en eventos que no se
+  /// numeran (terminación, liquidación). Es la base de la detección de saltos.
+  sequenceNumber Int?
+
+  /// Fecha del acto administrativo.
+  eventDate DateTime @db.Date
+
+  /// Efecto en el valor: positivo en adiciones. Nulo si el evento no toca valor.
+  valueDelta Decimal? @db.Decimal(15, 2)
+  /// Efecto en el plazo, en días: positivo en prórrogas. Nulo si no toca plazo.
+  daysDelta  Int?
+
+  /// Para SUSPENSION: inicio y fin del período suspendido. `endDate` queda nulo
+  /// mientras no exista el reinicio, y el motor de reglas lo usa para saber que
+  /// el contrato sigue suspendido.
+  startDate DateTime? @db.Date
+  endDate   DateTime? @db.Date
+
+  /// Para RESUMPTION: la suspensión que este acto reanuda. Permite verificar
+  /// que toda suspensión tenga su reinicio sin depender de la numeración.
+  relatedEventId String?
+
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  contract      Contract        @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  relatedEvent  ContractEvent?  @relation("EventChain", fields: [relatedEventId], references: [id])
+  chainedEvents ContractEvent[] @relation("EventChain")
+  documents     ContractDocument[]
+  guarantees    Guarantee[]
+  budgetRecords BudgetRecord[]
+  alerts        Alert[]
+
+  @@unique([contractId, type, sequenceNumber])
+  @@index([contractId, type])
+  @@map("contract_events")
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// PAGOS
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// Un pago con sus soportes. Entidad propia (no un ContractEvent) porque tiene
+/// semántica distinta: se le evalúa un checklist propio de documentos soporte y
+/// de ahí sale "Pago 1 completo / Pago 2 incompleto — falta el informe de
+/// supervisión", que es exactamente lo que el cliente describió necesitar.
+///
+/// `status` es un estado administrativo declarado (¿ya se giró?), NO la
+/// completitud documental: esa se deriva comparando sus documentos contra los
+/// DocumentRequirement marcados `appliesToEachPayment`.
+model Payment {
+  id             String        @id @default(cuid())
+  contractId     String
+  /// Pago 1, 2, 3... Base para detectar saltos igual que en los eventos.
+  sequenceNumber Int
+  value          Decimal       @db.Decimal(15, 2)
+  /// Fecha del acta de recibo parcial que respalda el pago.
+  actDate        DateTime?     @db.Date
+  /// Fecha del giro efectivo.
+  paidAt         DateTime?     @db.Date
+  status         PaymentStatus @default(REGISTERED)
+  /// true cuando el pago corresponde al anticipo y no a una acta parcial.
+  isAdvance      Boolean       @default(false)
+  notes          String?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  contract  Contract           @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  documents ContractDocument[]
+  alerts    Alert[]
+
+  @@unique([contractId, sequenceNumber])
+  @@index([contractId])
+  @@map("payments")
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// GARANTÍAS / PÓLIZAS
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// Una póliza con su vigencia y su amparo.
+///
+/// `coversEventId` es la pieza central de la regla que el cliente señaló como
+/// el caso más importante: "se amplió el plazo pero las pólizas no se
+/// actualizaron". Con esta FK, la verificación es determinística — para cada
+/// evento que cambia valor o plazo debe existir una garantía que lo referencie.
+/// Nulo = garantía inicial del contrato.
+///
+/// Una fila por amparo (cumplimiento, responsabilidad civil...), tal como
+/// aparecen en los expedientes reales: PDFs separados por amparo.
+model Guarantee {
+  id           String        @id @default(cuid())
+  contractId   String
+  coversEventId String?
+  type         GuaranteeType
+  policyNumber String
+  insurer      String?
+  insuredValue Decimal?      @db.Decimal(15, 2)
+  validFrom    DateTime?     @db.Date
+  validUntil   DateTime?     @db.Date
+  /// Fecha del acto de aprobación de la póliza por parte de la entidad. Su
+  /// ausencia es en sí misma una situación que amerita alerta.
+  approvedAt   DateTime?     @db.Date
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  contract    Contract           @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  coversEvent ContractEvent?     @relation(fields: [coversEventId], references: [id])
+  documents   ContractDocument[]
+  alerts      Alert[]
+
+  @@index([contractId])
+  @@index([coversEventId])
+  @@map("guarantees")
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// DOCUMENTOS
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// Un archivo del expediente.
+///
+/// `originalFileName` se conserva SIEMPRE, sin excepción: es la única forma de
+/// que el funcionario reconozca su propio archivo y de poder auditar una
+/// clasificación equivocada. `standardizedName` es la representación ordenada
+/// que genera el sistema ("CD-001-2025_Acta-Inicio.pdf") una vez sabe qué es el
+/// documento — es una consecuencia de la clasificación, nunca su insumo.
+///
+/// Un documento cuelga del contrato y, cuando corresponde, de UN contexto:
+/// pago, evento o garantía. Las tres FK son nulas para documentos que viven a
+/// nivel del contrato (el estudio previo, el CDP, el clausulado).
+model ContractDocument {
+  id             String  @id @default(cuid())
+  contractId     String
+  documentTypeId String?
+
+  // ── Contexto (a lo sumo uno) ───────────────────────────────────────────
+  paymentId   String?
+  eventId     String?
+  guaranteeId String?
+
+  originalFileName String
+  standardizedName String?
+  storagePath      String /// Ruta en el storage; el archivo nunca vive en la BD
+  mimeType         String?
+  fileSize         Int?
+  /// Hash del contenido. Los expedientes reales repiten el mismo PDF en varias
+  /// carpetas ("COMPROBANTE DE EGRESO.pdf"): el hash distingue un duplicado
+  /// real de dos documentos distintos que casualmente se llaman igual.
+  contentHash      String?
+
+  // ── Clasificación y validación ─────────────────────────────────────────
+  // Estos cuatro campos son los que impiden que una sugerencia de IA se
+  // convierta en dato sin que un humano la confirme. Un documento con
+  // source = AI_SUGGESTED y validatedAt nulo está en la cola de revisión y NO
+  // cuenta como presente para el checklist.
+  source       DocumentSource @default(MANUAL)
+  /// 0.00–1.00. Solo se llena cuando source = AI_SUGGESTED.
+  aiConfidence Decimal?       @db.Decimal(3, 2)
+  validatedById String?
+  validatedAt   DateTime?
+
+  uploadedAt DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  contract     Contract      @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  documentType DocumentType? @relation(fields: [documentTypeId], references: [id])
+  payment      Payment?      @relation(fields: [paymentId], references: [id])
+  event        ContractEvent? @relation(fields: [eventId], references: [id])
+  guarantee    Guarantee?    @relation(fields: [guaranteeId], references: [id])
+  validatedBy  User?         @relation("DocumentValidatedBy", fields: [validatedById], references: [id])
+
+  @@index([contractId])
+  @@index([contractId, documentTypeId])
+  @@index([paymentId])
+  @@index([contentHash])
+  @@map("contract_documents")
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ALERTAS
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// Hallazgo producido por el motor de reglas. Siempre determinístico: ninguna
+/// alerta la genera una IA.
+///
+/// `ruleCode` hace la alerta auditable — permite responder "¿por qué el sistema
+/// dice que este contrato está atrasado?" señalando la regla exacta, y permite
+/// regenerar alertas sin duplicar las ya existentes.
+model Alert {
+  id         String        @id @default(cuid())
+  contractId String
+  ruleCode   String /// "GARANTIA_NO_ACTUALIZADA", "SALTO_SECUENCIA", "DOC_FALTANTE"
+  severity   AlertSeverity
+  message    String
+
+  // Contexto opcional: a qué elemento concreto apunta el hallazgo.
+  eventId     String?
+  paymentId   String?
+  guaranteeId String?
+
+  status     AlertStatus @default(OPEN)
+  /// Motivo cuando el usuario descarta la alerta a conciencia (p. ej. el
+  /// documento existe en físico). Deja rastro en vez de borrar el hallazgo.
+  dismissedReason String?
+  detectedAt DateTime    @default(now())
+  resolvedAt DateTime?
+  updatedAt  DateTime    @updatedAt
+
+  contract  Contract       @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  event     ContractEvent? @relation(fields: [eventId], references: [id])
+  payment   Payment?       @relation(fields: [paymentId], references: [id])
+  guarantee Guarantee?     @relation(fields: [guaranteeId], references: [id])
+
+  @@index([contractId, status])
+  @@map("alerts")
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ENUMS
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// Tres etapas, según la descripción del propio cliente. Los contratos
+/// derivados no son una cuarta etapa: son contratos con su propio ciclo.
+enum ContractStage {
+  PRECONTRACTUAL
+  CONTRACTUAL
+  POSTCONTRACTUAL
+}
+
+enum EventType {
+  AMENDMENT /// Otrosí / modificación
+  ADDITION /// Adición en valor
+  EXTENSION /// Prórroga de plazo
+  SUSPENSION
+  RESUMPTION /// Reinicio / reanudación
+  TERMINATION
+  LIQUIDATION
+}
+
+enum BudgetRecordType {
+  CDP /// Certificado de disponibilidad presupuestal
+  RP /// Registro presupuestal (también CRP en algunos expedientes)
+}
+
+enum PaymentStatus {
+  REGISTERED /// Registrado, sin girar
+  PAID
+  CANCELLED
+}
+
+enum GuaranteeType {
+  CUMPLIMIENTO
+  RESPONSABILIDAD_CIVIL
+  SALARIOS_PRESTACIONES
+  ESTABILIDAD_OBRA
+  ANTICIPO
+  CALIDAD
+  OTRA
+}
+
+/// MANUAL: lo clasificó una persona.
+/// AI_SUGGESTED: lo propuso la IA y espera validación (o ya fue validado, si
+/// validatedAt no es nulo — así queda el rastro de que el origen fue una
+/// sugerencia automática y quién la confirmó).
+enum DocumentSource {
+  MANUAL
+  AI_SUGGESTED
+}
+
+enum AlertSeverity {
+  INFO
+  WARNING
+  CRITICAL
+}
+
+enum AlertStatus {
+  OPEN
+  RESOLVED
+  DISMISSED
+}

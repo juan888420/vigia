@@ -1,0 +1,22 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+* {
+  border-color: theme("colors.border.DEFAULT");
+}
+
+body {
+  background-color: theme("colors.base");
+  color: theme("colors.text.primary");
+}
+
+::selection {
+  background-color: theme("colors.accent.DEFAULT");
+  color: #0a0a0a;
+}
+
+:focus-visible {
+  outline: 2px solid theme("colors.accent.DEFAULT");
+  outline-offset: 2px;
+}
