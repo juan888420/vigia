@@ -303,6 +303,28 @@ model ContractEvent {
 
   @@unique([contractId, type, sequenceNumber])
   @@index([contractId, type])
+  // ⚠ ÍNDICES ESCRITOS A MANO — NO VISIBLES PARA PRISMA
+  //
+  // La migración 20260827014508_unique_termination_liquidation crea dos
+  // índices únicos PARCIALES que este schema no puede declarar:
+  //
+  //   CREATE UNIQUE INDEX contract_events_one_termination_per_contract
+  //     ON contract_events ("contractId") WHERE type = 'TERMINATION';
+  //   CREATE UNIQUE INDEX contract_events_one_liquidation_per_contract
+  //     ON contract_events ("contractId") WHERE type = 'LIQUIDATION';
+  //
+  // Garantizan que un contrato se termine y se liquide una sola vez. Prisma no
+  // admite `WHERE` en @@unique, y el @@unique de arriba no cubre este caso:
+  // esos dos tipos no se numeran y en Postgres los NULL no colisionan entre sí,
+  // así que sin los índices caben infinitas actas de terminación.
+  //
+  // CONSECUENCIA OPERATIVA: Prisma no los ve en su diff. Hoy `migrate status`
+  // responde "up to date" y los respeta, pero un `prisma migrate dev` futuro
+  // —sobre todo tras actualizar Prisma— puede proponer eliminarlos o forzar un
+  // reset. Revisa SIEMPRE el SQL generado con `migrate dev --create-only` antes
+  // de aplicarlo, y si la migración los elimina, vuelve a crearlos en ella.
+  // Los índices son la única garantía real: la comprobación equivalente en
+  // apps/api/src/routes/events.ts solo existe para devolver un 409 legible.
   @@map("contract_events")
 }
 
