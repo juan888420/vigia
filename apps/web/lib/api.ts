@@ -60,6 +60,107 @@ export interface ContractPayload {
   advanceValue: string | null;
 }
 
+export type PaymentStatus = "REGISTERED" | "PAID" | "CANCELLED";
+
+/** Espejo de lo que devuelve el API. `value` llega como string por la misma
+ *  razón que initialValue: la base guarda Decimal(15,2). */
+export interface Payment {
+  id: string;
+  contractId: string;
+  sequenceNumber: number;
+  value: string;
+  actDate: string | null;
+  paidAt: string | null;
+  status: PaymentStatus;
+  isAdvance: boolean;
+  notes: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** Campos escribibles. POST exige sequenceNumber y value; PATCH acepta
+ *  cualquier subconjunto, por eso las mutaciones lo reciben como Partial. */
+export interface PaymentPayload {
+  sequenceNumber: number;
+  value: string;
+  actDate: string | null;
+  paidAt: string | null;
+  status: PaymentStatus;
+  isAdvance: boolean;
+  notes: string | null;
+}
+
+export type EventType =
+  | "AMENDMENT"
+  | "ADDITION"
+  | "EXTENSION"
+  | "SUSPENSION"
+  | "RESUMPTION"
+  | "TERMINATION"
+  | "LIQUIDATION";
+
+export interface ContractEvent {
+  id: string;
+  contractId: string;
+  type: EventType;
+  sequenceNumber: number | null;
+  eventDate: string;
+  valueDelta: string | null;
+  daysDelta: number | null;
+  startDate: string | null;
+  endDate: string | null;
+  relatedEventId: string | null;
+  description: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface EventPayload {
+  type: EventType;
+  sequenceNumber: number | null;
+  eventDate: string;
+  valueDelta: string | null;
+  daysDelta: number | null;
+  startDate: string | null;
+  relatedEventId: string | null;
+  description: string | null;
+}
+
+export type GuaranteeType =
+  | "CUMPLIMIENTO"
+  | "RESPONSABILIDAD_CIVIL"
+  | "SALARIOS_PRESTACIONES"
+  | "ESTABILIDAD_OBRA"
+  | "ANTICIPO"
+  | "CALIDAD"
+  | "OTRA";
+
+export interface Guarantee {
+  id: string;
+  contractId: string;
+  coversEventId: string | null;
+  type: GuaranteeType;
+  policyNumber: string;
+  insurer: string | null;
+  insuredValue: string | null;
+  validFrom: string | null;
+  validUntil: string | null;
+  approvedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface GuaranteePayload {
+  coversEventId: string | null;
+  type: GuaranteeType;
+  policyNumber: string;
+  insurer: string | null;
+  insuredValue: string | null;
+  validFrom: string | null;
+  validUntil: string | null;
+  approvedAt: string | null;
+}
+
 export class ApiError extends Error {
   constructor(
     message: string,
@@ -119,6 +220,84 @@ export function updateContract(id: string, input: Partial<ContractPayload>) {
 
 export function deleteContract(id: string) {
   return request<void>(`/contratos/${id}`, { method: "DELETE" });
+}
+
+export function listPayments(contractId: string) {
+  return request<Payment[]>(`/contratos/${contractId}/pagos`);
+}
+
+export function getPayment(id: string) {
+  return request<Payment>(`/pagos/${id}`);
+}
+
+export function createPayment(contractId: string, input: PaymentPayload) {
+  return request<Payment>(`/contratos/${contractId}/pagos`, {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export function updatePayment(id: string, input: Partial<PaymentPayload>) {
+  return request<Payment>(`/pagos/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(input),
+  });
+}
+
+export function deletePayment(id: string) {
+  return request<void>(`/pagos/${id}`, { method: "DELETE" });
+}
+
+export function listEvents(contractId: string) {
+  return request<ContractEvent[]>(`/contratos/${contractId}/eventos`);
+}
+
+export function getEvent(id: string) {
+  return request<ContractEvent>(`/eventos/${id}`);
+}
+
+export function createEvent(contractId: string, input: EventPayload) {
+  return request<ContractEvent>(`/contratos/${contractId}/eventos`, {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export function updateEvent(id: string, input: Partial<EventPayload>) {
+  return request<ContractEvent>(`/eventos/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(input),
+  });
+}
+
+export function deleteEvent(id: string) {
+  return request<void>(`/eventos/${id}`, { method: "DELETE" });
+}
+
+export function listGuarantees(contractId: string) {
+  return request<Guarantee[]>(`/contratos/${contractId}/garantias`);
+}
+
+export function getGuarantee(id: string) {
+  return request<Guarantee>(`/garantias/${id}`);
+}
+
+export function createGuarantee(contractId: string, input: GuaranteePayload) {
+  return request<Guarantee>(`/contratos/${contractId}/garantias`, {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export function updateGuarantee(id: string, input: Partial<GuaranteePayload>) {
+  return request<Guarantee>(`/garantias/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(input),
+  });
+}
+
+export function deleteGuarantee(id: string) {
+  return request<void>(`/garantias/${id}`, { method: "DELETE" });
 }
 
 const currency = new Intl.NumberFormat("es-CO", {
