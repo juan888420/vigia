@@ -3,6 +3,8 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "../lib/prisma";
 import { normalizeContractNumber } from "../lib/contract-number";
 import { dateOnly, decimalToString } from "../lib/serialize";
+import { prismaErrorResponse } from "../lib/prisma-errors";
+import { money, nullableDate, nullableMoney, nullableString, toDate } from "../lib/validation";
 
 // Only Contract is exposed here. Payment, ContractEvent, Guarantee and
 // ContractDocument have no routes yet, and neither does the rules engine: this
@@ -39,11 +41,6 @@ function serializeContract(contract: ContractWithRelations) {
   };
 }
 
-const nullableString = { type: ["string", "null"] } as const;
-const nullableDate = { type: ["string", "null"], format: "date" } as const;
-/** Accepts "45000000.00" or 45000000; Prisma parses both into Decimal(15,2). */
-const money = { type: ["string", "number"], pattern: "^-?\\d{1,13}(\\.\\d{1,2})?$" } as const;
-
 /** Campos escribibles del contrato. Create y update comparten esta definición
  *  para que un campo nuevo no pueda quedar validado en una ruta y en la otra no. */
 const contractProperties = {
@@ -59,7 +56,7 @@ const contractProperties = {
   signatureDate: nullableDate,
   startDate: nullableDate,
   initialEndDate: nullableDate,
-  advanceValue: { ...money, type: ["string", "number", "null"] },
+  advanceValue: nullableMoney,
 } as const;
 
 const createContractSchema = {
@@ -97,43 +94,16 @@ type CreateContractBody = {
 
 type UpdateContractBody = Partial<CreateContractBody>;
 
-/** "2025-03-15" → Date at UTC midnight, so a @db.Date column keeps the day. */
-function toDate(value: string | null | undefined): Date | null {
-  return value ? new Date(`${value}T00:00:00.000Z`) : null;
-}
-
 function toDecimal(value: string | number | null | undefined): Prisma.Decimal | null {
   return value === null || value === undefined ? null : new Prisma.Decimal(value);
 }
 
-/**
- * Traduce los errores conocidos de Prisma a respuestas HTTP. Devuelve null
- * cuando el error no es uno de los esperados, para que suba y quede en el log
- * en vez de convertirse en un 400 genérico que oculte un fallo real.
- */
-function prismaErrorResponse(error: unknown): { status: number; body: object } | null {
-  if (!(error instanceof Prisma.PrismaClientKnownRequestError)) return null;
+const CONTRACT_ERRORS = {
+  conflict: "Ya existe un contrato con ese número en la oficina",
+  foreignKey: "La oficina o la modalidad de contratación no existe",
+  notFound: "Contrato no encontrado",
+};
 
-  switch (error.code) {
-    // Unique violation on (officeId, normalizedNumber).
-    case "P2002":
-      return {
-        status: 409,
-        body: { error: "Ya existe un contrato con ese número en la oficina" },
-      };
-    // FK violation: officeId or contractTypeId does not exist.
-    case "P2003":
-      return {
-        status: 400,
-        body: { error: "La oficina o la modalidad de contratación no existe" },
-      };
-    // Update/delete sobre un id inexistente.
-    case "P2025":
-      return { status: 404, body: { error: "Contrato no encontrado" } };
-    default:
-      return null;
-  }
-}
 
 export async function contractsRoutes(app: FastifyInstance) {
   app.get("/", async () => {
@@ -184,7 +154,7 @@ export async function contractsRoutes(app: FastifyInstance) {
 
         return reply.status(201).send(serializeContract(contract));
       } catch (error) {
-        const mapped = prismaErrorResponse(error);
+        const mapped = prismaErrorResponse(error, CONTRACT_ERRORS);
         if (mapped) return reply.status(mapped.status).send(mapped.body);
         throw error;
       }
@@ -261,7 +231,7 @@ export async function contractsRoutes(app: FastifyInstance) {
       } catch (error) {
         // El chequeo previo cubre el caso normal; P2002 aquí solo aparecería si
         // otra petición creara el mismo número entre la comprobación y el update.
-        const mapped = prismaErrorResponse(error);
+        const mapped = prismaErrorResponse(error, CONTRACT_ERRORS);
         if (mapped) return reply.status(mapped.status).send(mapped.body);
         throw error;
       }
@@ -275,7 +245,7 @@ export async function contractsRoutes(app: FastifyInstance) {
       await prisma.contract.delete({ where: { id: request.params.id } });
       return reply.status(204).send();
     } catch (error) {
-      const mapped = prismaErrorResponse(error);
+      const mapped = prismaErrorResponse(error, CONTRACT_ERRORS);
       if (mapped) return reply.status(mapped.status).send(mapped.body);
       throw error;
     }
