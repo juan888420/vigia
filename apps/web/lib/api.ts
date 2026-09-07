@@ -161,6 +161,32 @@ export interface GuaranteePayload {
   approvedAt: string | null;
 }
 
+export type BudgetRecordType = "CDP" | "RP";
+
+/** Respaldo presupuestal. Un contrato puede tener varios CDP/RP a la vez
+ *  cuando se compone de partidas que no pueden mezclarse; el valor del
+ *  contrato es la suma de todas. `value` llega como string por la misma razón
+ *  que initialValue: la base guarda Decimal(15,2). */
+export interface BudgetRecord {
+  id: string;
+  contractId: string;
+  eventId: string | null;
+  type: BudgetRecordType;
+  number: string;
+  value: string;
+  issuedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface BudgetRecordPayload {
+  type: BudgetRecordType;
+  number: string;
+  value: string;
+  issuedAt: string | null;
+  eventId: string | null;
+}
+
 export class ApiError extends Error {
   constructor(
     message: string,
@@ -298,6 +324,32 @@ export function updateGuarantee(id: string, input: Partial<GuaranteePayload>) {
 
 export function deleteGuarantee(id: string) {
   return request<void>(`/garantias/${id}`, { method: "DELETE" });
+}
+
+export function listBudgetRecords(contractId: string) {
+  return request<BudgetRecord[]>(`/contratos/${contractId}/presupuesto`);
+}
+
+export function getBudgetRecord(id: string) {
+  return request<BudgetRecord>(`/presupuesto/${id}`);
+}
+
+export function createBudgetRecord(contractId: string, input: BudgetRecordPayload) {
+  return request<BudgetRecord>(`/contratos/${contractId}/presupuesto`, {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export function updateBudgetRecord(id: string, input: Partial<BudgetRecordPayload>) {
+  return request<BudgetRecord>(`/presupuesto/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(input),
+  });
+}
+
+export function deleteBudgetRecord(id: string) {
+  return request<void>(`/presupuesto/${id}`, { method: "DELETE" });
 }
 
 const currency = new Intl.NumberFormat("es-CO", {

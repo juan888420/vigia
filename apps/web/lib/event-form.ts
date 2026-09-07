@@ -159,3 +159,9 @@ export function insurableEvents(events: ContractEvent[]): ContractEvent[] {
     (e) => e.type === "AMENDMENT" || e.type === "ADDITION" || e.type === "EXTENSION",
   );
 }
+
+/** Eventos que un CDP/RP puede respaldar: solo los que pueden aumentar el
+ *  valor. Una prórroga mueve el plazo, no el presupuesto. */
+export function fundableEvents(events: ContractEvent[]): ContractEvent[] {
+  return events.filter((e) => e.type === "ADDITION" || e.type === "AMENDMENT");
+}

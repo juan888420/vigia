@@ -1,9 +1,10 @@
 import Link from "next/link";
 
-// Las tres caras del expediente que ya existen. El detalle mock
+// Las cuatro caras del expediente que ya existen. El detalle mock
 // (/contratos/[id]) no entra aquí: no muestra datos reales todavía.
 
 const TABS = [
+  { key: "presupuesto", label: "Presupuesto" },
   { key: "pagos", label: "Pagos" },
   { key: "eventos", label: "Eventos" },
   { key: "garantias", label: "Garantías" },
