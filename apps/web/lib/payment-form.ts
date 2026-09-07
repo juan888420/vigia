@@ -25,6 +25,7 @@ export interface PaymentFormValues {
   paidAt: string;
   status: PaymentStatus;
   isAdvance: boolean;
+  isFinal: boolean;
   notes: string;
 }
 
@@ -35,6 +36,7 @@ export const EMPTY_PAYMENT_FORM: PaymentFormValues = {
   paidAt: "",
   status: "REGISTERED",
   isAdvance: false,
+  isFinal: false,
   notes: "",
 };
 
@@ -53,6 +55,7 @@ export function toPaymentPayload(form: PaymentFormValues): PaymentPayload {
     paidAt: nullIfEmpty(form.paidAt),
     status: form.status,
     isAdvance: form.isAdvance,
+    isFinal: form.isFinal,
     notes: nullIfEmpty(form.notes),
   };
 }
@@ -67,6 +70,7 @@ export function paymentToFormValues(payment: Payment): PaymentFormValues {
     paidAt: payment.paidAt ?? "",
     status: payment.status,
     isAdvance: payment.isAdvance,
+    isFinal: payment.isFinal,
     notes: payment.notes ?? "",
   };
 }

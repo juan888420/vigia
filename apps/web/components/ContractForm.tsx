@@ -293,8 +293,8 @@ export function ContractForm({
 
       {invalidDateRange && (
         <p className="text-xs text-status-pendientes">
-          La terminación inicial no es posterior a la fecha de inicio: el plazo no se puede
-          calcular. Corrige las fechas o déjalas vacías para escribirlo a mano.
+          La terminación inicial es anterior a la fecha de inicio: el plazo no se puede calcular.
+          Corrige las fechas o déjalas vacías para escribirlo a mano.
         </p>
       )}
 

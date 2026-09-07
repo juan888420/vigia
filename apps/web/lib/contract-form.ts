@@ -44,17 +44,21 @@ function nullIfEmpty(value: string) {
 }
 
 /**
- * Días entre dos fechas "YYYY-MM-DD", como diferencia simple (sin contar el día
- * de inicio). Es una comodidad del formulario: evita que alguien tenga que
- * traducir "3 meses" a días contando calendario, que da resultados distintos
- * según el mes — del 2025-03-15 al 2025-06-15 hay 92 días, no 90.
+ * Días de plazo entre dos fechas "YYYY-MM-DD", con conteo INCLUSIVO: el día de
+ * inicio cuenta como el primer día del plazo. Confirmado por el cliente — un
+ * contrato que arranca el 2025-09-04 con 3 meses vence el 2025-12-04, y el 4 de
+ * septiembre ya es un día contractual: 91 de diferencia + 1 = 92 días.
+ *
+ * Es una comodidad del formulario: evita que alguien tenga que traducir
+ * "3 meses" a días contando calendario, que da resultados distintos según el
+ * mes — del 2025-03-15 al 2025-06-15 son 93 días, no 90.
  *
  * Lo que se guarda sigue siendo `initialTermDays`. El schema no cambia y el
  * motor de reglas no sabe nada de esto.
  *
- * Devuelve null si falta alguna fecha o si el rango no es válido (terminación
- * anterior o igual al inicio): el API exige un plazo de al menos 1 día, así que
- * un rango invertido no puede convertirse en un número y enviarse.
+ * Devuelve null si falta alguna fecha o si la terminación es anterior al
+ * inicio. Terminación igual al inicio SÍ es válida y vale 1 día: con conteo
+ * inclusivo, un contrato de un solo día es exactamente eso.
  */
 export function daysBetween(start: string, end: string): number | null {
   if (start === "" || end === "") return null;
@@ -65,8 +69,8 @@ export function daysBetween(start: string, end: string): number | null {
 
   // Ambas fechas se anclan a medianoche UTC, así que la división es exacta y no
   // la desplaza ningún cambio de horario.
-  const days = (endMs - startMs) / 86_400_000;
-  return days > 0 ? days : null;
+  const difference = (endMs - startMs) / 86_400_000;
+  return difference >= 0 ? difference + 1 : null;
 }
 
 /** Los campos vacíos viajan como null: una cadena vacía en la base sería

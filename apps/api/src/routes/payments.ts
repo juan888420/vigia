@@ -24,6 +24,7 @@ function serializePayment(payment: PaymentRecord) {
     paidAt: dateOnly(payment.paidAt),
     status: payment.status,
     isAdvance: payment.isAdvance,
+    isFinal: payment.isFinal,
     notes: payment.notes,
     createdAt: payment.createdAt.toISOString(),
     updatedAt: payment.updatedAt.toISOString(),
@@ -40,6 +41,7 @@ const paymentProperties = {
   paidAt: nullableDate,
   status: { type: "string", enum: Object.values(PaymentStatus) },
   isAdvance: { type: "boolean" },
+  isFinal: { type: "boolean" },
   notes: nullableString,
 } as const;
 
@@ -64,6 +66,7 @@ type CreatePaymentBody = {
   paidAt?: string | null;
   status?: PaymentStatus;
   isAdvance?: boolean;
+  isFinal?: boolean;
   notes?: string | null;
 };
 
@@ -135,6 +138,7 @@ export async function paymentsRoutes(app: FastifyInstance) {
             paidAt: toDate(body.paidAt),
             status: body.status ?? PaymentStatus.REGISTERED,
             isAdvance: body.isAdvance ?? false,
+            isFinal: body.isFinal ?? false,
             notes: body.notes?.trim() || null,
           },
         });
@@ -183,6 +187,7 @@ export async function paymentsRoutes(app: FastifyInstance) {
       if (body.paidAt !== undefined) data.paidAt = toDate(body.paidAt);
       if (body.status !== undefined) data.status = body.status;
       if (body.isAdvance !== undefined) data.isAdvance = body.isAdvance;
+      if (body.isFinal !== undefined) data.isFinal = body.isFinal;
       if (body.notes !== undefined) data.notes = body.notes?.trim() || null;
 
       if (body.sequenceNumber !== undefined && body.sequenceNumber !== current.sequenceNumber) {

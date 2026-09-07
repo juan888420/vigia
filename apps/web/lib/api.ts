@@ -73,6 +73,7 @@ export interface Payment {
   paidAt: string | null;
   status: PaymentStatus;
   isAdvance: boolean;
+  isFinal: boolean;
   notes: string | null;
   createdAt: string;
   updatedAt: string;
@@ -87,6 +88,7 @@ export interface PaymentPayload {
   paidAt: string | null;
   status: PaymentStatus;
   isAdvance: boolean;
+  isFinal: boolean;
   notes: string | null;
 }
 

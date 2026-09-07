@@ -149,6 +149,16 @@ export function PaymentForm({
         <span className="text-sm text-text-secondary">Este pago es el anticipo</span>
       </label>
 
+      <label className="flex items-center gap-2.5">
+        <input
+          type="checkbox"
+          checked={form.isFinal}
+          onChange={(e) => update("isFinal", e.target.checked)}
+          className="h-4 w-4 shrink-0 accent-accent"
+        />
+        <span className="text-sm text-text-secondary">Este pago es el pago final</span>
+      </label>
+
       <Field label="Notas" hint="opcional">
         <textarea
           rows={3}

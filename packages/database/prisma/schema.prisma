@@ -357,6 +357,10 @@ model Payment {
   status         PaymentStatus @default(REGISTERED)
   /// true cuando el pago corresponde al anticipo y no a una acta parcial.
   isAdvance      Boolean       @default(false)
+  /// true cuando este pago cierra la ejecución del contrato. Deliberadamente
+  /// SIN unicidad: un contrato en ejecución no tiene ninguno todavía, y forzar
+  /// "exactamente uno" impediría registrar el expediente tal como va.
+  isFinal        Boolean       @default(false)
   notes          String?
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt

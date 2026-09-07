@@ -44,6 +44,11 @@ export function PaymentRow({ payment, contractId }: { payment: Payment; contract
                 Anticipo
               </span>
             )}
+            {payment.isFinal && (
+              <span className="rounded border border-border-strong px-1.5 py-0.5 text-[10px] text-text-muted">
+                Pago final
+              </span>
+            )}
           </div>
           {payment.notes && <p className="mt-1.5 max-w-md text-sm text-text-secondary">{payment.notes}</p>}
         </div>
