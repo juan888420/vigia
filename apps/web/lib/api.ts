@@ -189,6 +189,73 @@ export interface BudgetRecordPayload {
   eventId: string | null;
 }
 
+export type ContractStage = "PRECONTRACTUAL" | "CONTRACTUAL" | "POSTCONTRACTUAL";
+
+export type DocumentSource = "MANUAL" | "AI_SUGGESTED";
+
+/** Tipo documental del catálogo, resuelto para una modalidad concreta a través
+ *  de DocumentRequirement. `required` y `appliesToEachPayment` vienen del
+ *  requisito, no del tipo: el mismo "Acta de inicio" puede ser obligatorio en
+ *  una modalidad y opcional en otra. */
+export interface DocumentTypeOption {
+  id: string;
+  code: string;
+  name: string;
+  stage: ContractStage;
+  fileLabel: string;
+  required: boolean;
+  appliesToEachPayment: boolean;
+}
+
+/** Resumen del tipo que viaja embebido en cada documento, igual que
+ *  `contractType` viaja dentro de Contract. */
+export interface DocumentTypeSummary {
+  id: string;
+  code: string;
+  name: string;
+  stage: ContractStage;
+  fileLabel: string;
+}
+
+/**
+ * Un archivo del expediente. `source`, `aiConfidence`, `validatedById` y
+ * `validatedAt` llegan pero son de SOLO LECTURA: pertenecen al flujo de
+ * clasificación con IA, que todavía no existe. Nada de esta app los escribe.
+ */
+export interface ContractDocument {
+  id: string;
+  contractId: string;
+  documentTypeId: string | null;
+  documentType: DocumentTypeSummary | null;
+  paymentId: string | null;
+  eventId: string | null;
+  guaranteeId: string | null;
+  originalFileName: string;
+  standardizedName: string | null;
+  storagePath: string;
+  mimeType: string | null;
+  fileSize: number | null;
+  contentHash: string | null;
+  source: DocumentSource;
+  aiConfidence: string | null;
+  validatedById: string | null;
+  validatedAt: string | null;
+  uploadedAt: string;
+  updatedAt: string;
+}
+
+/** Campos escribibles. Las tres FK de contexto son excluyentes: como mucho una
+ *  distinta de null. El formulario lo garantiza con un solo select; el API lo
+ *  vuelve a comprobar. */
+export interface ContractDocumentPayload {
+  documentTypeId: string;
+  paymentId: string | null;
+  eventId: string | null;
+  guaranteeId: string | null;
+  originalFileName: string;
+  storagePath: string;
+}
+
 export class ApiError extends Error {
   constructor(
     message: string,
@@ -352,6 +419,36 @@ export function updateBudgetRecord(id: string, input: Partial<BudgetRecordPayloa
 
 export function deleteBudgetRecord(id: string) {
   return request<void>(`/presupuesto/${id}`, { method: "DELETE" });
+}
+
+export function listDocumentTypes(contractTypeId: string) {
+  return request<DocumentTypeOption[]>(`/modalidades/${contractTypeId}/tipos-documentales`);
+}
+
+export function listDocuments(contractId: string) {
+  return request<ContractDocument[]>(`/contratos/${contractId}/documentos`);
+}
+
+export function getDocument(id: string) {
+  return request<ContractDocument>(`/documentos/${id}`);
+}
+
+export function createDocument(contractId: string, input: ContractDocumentPayload) {
+  return request<ContractDocument>(`/contratos/${contractId}/documentos`, {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export function updateDocument(id: string, input: Partial<ContractDocumentPayload>) {
+  return request<ContractDocument>(`/documentos/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(input),
+  });
+}
+
+export function deleteDocument(id: string) {
+  return request<void>(`/documentos/${id}`, { method: "DELETE" });
 }
 
 const currency = new Intl.NumberFormat("es-CO", {
