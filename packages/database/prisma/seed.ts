@@ -145,6 +145,20 @@ const CD_REQUIREMENTS: RequirementSeed[] = [
     description: 'Pendiente de confirmar si entra en el seguimiento de esta oficina.',
     required: false,
   },
+  {
+    code: 'OTROSI',
+    name: 'Otrosí / Modificación contractual',
+    stage: ContractStage.CONTRACTUAL,
+    fileLabel: 'Otrosi',
+    description:
+      'Aparece en los expedientes reales (OTROSI 1, OTROSI 2 en CD-007-2025). ' +
+      'required: false en la plantilla porque un contrato sin modificaciones no ' +
+      'lo necesita. Su obligatoriedad real es condicional: debe existir uno por ' +
+      'cada ContractEvent de tipo AMENDMENT / ADDITION / EXTENSION. Esa ' +
+      'verificación cruzada es del motor de reglas, no de la plantilla estática, ' +
+      'que solo sabe decir "obligatorio siempre" u "opcional".',
+    required: false,
+  },
 
   // ── SOPORTES DE PAGO ───────────────────────────────────────────────────────
   // Etapa CONTRACTUAL: ocurren durante la ejecución. Lo que los distingue del
