@@ -5,6 +5,7 @@ import { contractsRoutes } from "./routes/contracts";
 import { paymentsRoutes } from "./routes/payments";
 import { eventsRoutes } from "./routes/events";
 import { guaranteesRoutes } from "./routes/guarantees";
+import { budgetRoutes } from "./routes/budget";
 import { catalogRoutes } from "./routes/catalog";
 import { prisma } from "./lib/prisma";
 
@@ -26,6 +27,7 @@ async function main() {
   await app.register(paymentsRoutes);
   await app.register(eventsRoutes);
   await app.register(guaranteesRoutes);
+  await app.register(budgetRoutes);
 
   app.addHook("onClose", async () => {
     await prisma.$disconnect();

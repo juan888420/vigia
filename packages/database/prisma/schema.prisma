@@ -241,6 +241,10 @@ model BudgetRecord {
   contract Contract       @relation(fields: [contractId], references: [id], onDelete: Cascade)
   event    ContractEvent? @relation(fields: [eventId], references: [id])
 
+  /// El mismo CDP/RP no puede cargarse dos veces en un contrato. NO limita
+  /// cuántos respaldos tiene: CD-001-2025 lleva el CDP 121 y el CDP 122
+  /// porque son partidas distintas con números distintos.
+  @@unique([contractId, type, number])
   @@index([contractId])
   @@map("budget_records")
 }
