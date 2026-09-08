@@ -178,7 +178,7 @@ uno de suministro.
 | `schema.prisma` | **Diseñado y validado** — sin migraciones aún |
 | Wireframe del dashboard (`apps/web`) | Listo, con datos mock en `lib/mock-data.ts` |
 | `apps/api` (Fastify) | Esqueleto con rutas mock |
-| Motor de reglas | No implementado |
+| Motor de reglas | **Implementado** — cálculos derivados, hallazgos y estado en `apps/api/src/rules`, expuesto en `GET /contratos/:id/diagnostico` |
 | Clasificación con IA | No implementada |
 
 ### Fuera de alcance en esta etapa

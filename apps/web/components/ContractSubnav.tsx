@@ -1,7 +1,9 @@
 import Link from "next/link";
 
-// Las cinco caras del expediente que ya existen. El detalle mock
-// (/contratos/[id]) no entra aquí: no muestra datos reales todavía.
+// Las cinco caras del expediente que ya existen, más el diagnóstico, que no
+// es una cara sino la conclusión: lo que el motor de reglas deduce de todas
+// ellas. El detalle mock (/contratos/[id]) no entra aquí: no muestra datos
+// reales todavía.
 
 const TABS = [
   { key: "presupuesto", label: "Presupuesto" },
@@ -9,6 +11,7 @@ const TABS = [
   { key: "eventos", label: "Eventos" },
   { key: "garantias", label: "Garantías" },
   { key: "documentos", label: "Documentos" },
+  { key: "diagnostico", label: "Diagnóstico" },
 ] as const;
 
 export function ContractSubnav({

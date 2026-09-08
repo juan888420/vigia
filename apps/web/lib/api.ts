@@ -256,6 +256,56 @@ export interface ContractDocumentPayload {
   storagePath: string;
 }
 
+// ── Diagnóstico (motor de reglas) ───────────────────────────────────────────
+// Nada de esto está guardado en la base: el API lo calcula en cada consulta a
+// partir de los datos ya registrados. Esta app solo lo muestra.
+
+export type ContractStatus = "AL_DIA" | "CON_PENDIENTES" | "ATRASADO" | "SUSPENDIDO";
+
+export type FindingSeverity = "INFO" | "WARNING" | "CRITICAL";
+
+/** A qué registro apunta un hallazgo. `documentType` no es una fila de
+ *  ContractDocument sino el tipo que debería existir y falta. */
+export type FindingReferenceKind = "event" | "payment" | "guarantee" | "document" | "documentType";
+
+export interface FindingReference {
+  kind: FindingReferenceKind;
+  id: string;
+  label: string;
+}
+
+/** `ruleCode` llega como string y no como unión cerrada: el motor puede
+ *  incorporar reglas nuevas sin que esta pantalla deje de compilar. */
+export interface Finding {
+  ruleCode: string;
+  severity: FindingSeverity;
+  message: string;
+  references: FindingReference[];
+}
+
+/** Tres situaciones distintas, no un valor con posible error: ver el motor
+ *  de reglas (apps/api/src/rules/types.ts). */
+export type CurrentEndDate =
+  | { state: "CALCULADA"; date: string }
+  | {
+      state: "SUSPENDIDO";
+      suspensionEventId: string;
+      suspendedSince: string;
+      provisionalDate: string | null;
+    }
+  | { state: "SIN_FECHAS_BASE" };
+
+export interface Diagnostic {
+  contract: { id: string; number: string; object: string };
+  computedAt: string;
+  currentValue: string;
+  currentEndDate: CurrentEndDate;
+  balance: string;
+  budgetBacking: { total: string; matchesCurrentValue: boolean };
+  status: ContractStatus;
+  findings: Finding[];
+}
+
 export class ApiError extends Error {
   constructor(
     message: string,
@@ -459,4 +509,8 @@ const currency = new Intl.NumberFormat("es-CO", {
 
 export function formatMoney(value: string | null) {
   return value === null ? null : currency.format(Number(value));
+}
+
+export function getDiagnostic(contractId: string) {
+  return request<Diagnostic>(`/contratos/${contractId}/diagnostico`);
 }
