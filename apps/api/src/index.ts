@@ -8,6 +8,7 @@ import { guaranteesRoutes } from "./routes/guarantees";
 import { budgetRoutes } from "./routes/budget";
 import { documentsRoutes } from "./routes/documents";
 import { catalogRoutes } from "./routes/catalog";
+import { diagnosticsRoutes } from "./routes/diagnostics";
 import { prisma } from "./lib/prisma";
 
 const app = Fastify({
@@ -30,6 +31,9 @@ async function main() {
   await app.register(guaranteesRoutes);
   await app.register(budgetRoutes);
   await app.register(documentsRoutes);
+  // Sin prefijo y aparte de contractsRoutes: no es un CRUD del contrato sino
+  // el motor de reglas leyendo todo el expediente.
+  await app.register(diagnosticsRoutes);
 
   app.addHook("onClose", async () => {
     await prisma.$disconnect();
