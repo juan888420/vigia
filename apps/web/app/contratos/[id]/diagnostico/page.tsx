@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import { ApiError, formatMoney, getContract, getDiagnostic } from "@/lib/api";
 import type { CurrentEndDate } from "@/lib/api";
-import { STATUS_LABELS, STATUS_STYLES } from "@/lib/diagnostic";
+import { BUDGET_BACKING_PRESENTATION, STATUS_LABELS, STATUS_STYLES } from "@/lib/diagnostic";
 import { ContractSubnav } from "@/components/ContractSubnav";
 import { FindingRow } from "@/components/FindingRow";
 
@@ -12,6 +12,14 @@ import { FindingRow } from "@/components/FindingRow";
 // registrados, así que no puede quedar desfasada del expediente.
 
 export const dynamic = "force-dynamic";
+
+type MetricTone = "default" | "warning" | "muted";
+
+const METRIC_TONES: Record<MetricTone, string> = {
+  default: "text-text-primary",
+  warning: "text-status-pendientes",
+  muted: "text-text-muted",
+};
 
 function Metric({
   label,
@@ -22,20 +30,12 @@ function Metric({
   label: string;
   value: string;
   hint?: string;
-  tone?: "default" | "warning";
+  tone?: MetricTone;
 }) {
   return (
     <div className="rounded-lg border border-border bg-surface p-4">
       <p className="text-xs text-text-muted">{label}</p>
-      <p
-        className={
-          tone === "warning"
-            ? "mt-1 font-mono text-sm text-status-pendientes"
-            : "mt-1 font-mono text-sm text-text-primary"
-        }
-      >
-        {value}
-      </p>
+      <p className={`mt-1 font-mono text-sm ${METRIC_TONES[tone]}`}>{value}</p>
       {hint && <p className="mt-1 text-xs text-text-muted">{hint}</p>}
     </div>
   );
@@ -86,6 +86,7 @@ export default async function DiagnosticoPage({ params }: { params: { id: string
 
   const status = STATUS_STYLES[diagnostic.status];
   const endDate = endDateMetric(diagnostic.currentEndDate);
+  const backing = BUDGET_BACKING_PRESENTATION[diagnostic.budgetBacking.matchStatus];
   const findingCount = diagnostic.findings.length;
 
   return (
@@ -133,14 +134,10 @@ export default async function DiagnosticoPage({ params }: { params: { id: string
         />
         <Metric label="Saldo" value={formatMoney(diagnostic.balance) ?? "—"} />
         <Metric
-          label="Respaldo presupuestal"
+          label="Respaldo presupuestal (RP)"
           value={formatMoney(diagnostic.budgetBacking.total) ?? "—"}
-          hint={
-            diagnostic.budgetBacking.matchesCurrentValue
-              ? "Coincide con el valor vigente."
-              : "No coincide con el valor vigente."
-          }
-          tone={diagnostic.budgetBacking.matchesCurrentValue ? "default" : "warning"}
+          hint={`${backing.note} · Disponibilidad previa (CDP): ${formatMoney(diagnostic.budgetBacking.cdpTotal) ?? "—"}`}
+          tone={backing.tone}
         />
       </div>
 

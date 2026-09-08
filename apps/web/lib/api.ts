@@ -264,6 +264,10 @@ export type ContractStatus = "AL_DIA" | "CON_PENDIENTES" | "ATRASADO" | "SUSPEND
 
 export type FindingSeverity = "INFO" | "WARNING" | "CRITICAL";
 
+/** Tres situaciones, no un booleano: un contrato sin RP registrado todavía no
+ *  está descuadrado, y por eso tampoco produce PRESUPUESTO_DESCUADRADO. */
+export type BudgetBackingStatus = "COINCIDE" | "NO_COINCIDE" | "SIN_RP";
+
 /** A qué registro apunta un hallazgo. `documentType` no es una fila de
  *  ContractDocument sino el tipo que debería existir y falta. */
 export type FindingReferenceKind = "event" | "payment" | "guarantee" | "document" | "documentType";
@@ -301,7 +305,10 @@ export interface Diagnostic {
   currentValue: string;
   currentEndDate: CurrentEndDate;
   balance: string;
-  budgetBacking: { total: string; matchesCurrentValue: boolean };
+  /** `total` suma solo los RP: son los que respaldan el compromiso. `cdpTotal`
+   *  suma los CDP (disponibilidad previa) y no se compara contra el valor
+   *  vigente — CDP y RP no son partidas acumulables. */
+  budgetBacking: { total: string; cdpTotal: string; matchStatus: BudgetBackingStatus };
   status: ContractStatus;
   findings: Finding[];
 }

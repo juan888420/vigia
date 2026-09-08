@@ -152,7 +152,7 @@ export function EventForm({
       {(fields.valueDelta || fields.daysDelta) && (
         <div className="grid grid-cols-2 gap-4">
           {fields.valueDelta && (
-            <Field label="Valor añadido" hint="opcional">
+            <Field label="Efecto en el valor" hint="opcional, negativo si reduce">
               <input
                 inputMode="decimal"
                 value={form.valueDelta}

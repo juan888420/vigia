@@ -1,4 +1,9 @@
-import type { ContractStatus, FindingReference, FindingSeverity } from "./api";
+import type {
+  BudgetBackingStatus,
+  ContractStatus,
+  FindingReference,
+  FindingSeverity,
+} from "./api";
 
 // Módulo neutro (sin "use client"), igual que los demás lib/*.ts.
 // Solo presentación: ni una regla ni un cálculo viven aquí. El estado y los
@@ -21,6 +26,17 @@ export const STATUS_STYLES: Record<ContractStatus, { badge: string; dot: string 
   },
   ATRASADO: { badge: "bg-status-atrasado-dim text-status-atrasado", dot: "bg-status-atrasado" },
   SUSPENDIDO: { badge: "bg-surface-hover text-text-secondary", dot: "bg-text-muted" },
+};
+
+/** SIN_RP es informativo, no una advertencia: falta cargar el RP, no hay nada
+ *  mal en el expediente. Por eso "muted" y no el ámbar de NO_COINCIDE. */
+export const BUDGET_BACKING_PRESENTATION: Record<
+  BudgetBackingStatus,
+  { note: string; tone: "default" | "warning" | "muted" }
+> = {
+  COINCIDE: { note: "Coincide con el valor vigente", tone: "default" },
+  NO_COINCIDE: { note: "No coincide con el valor vigente", tone: "warning" },
+  SIN_RP: { note: "Aún no se ha registrado ningún RP", tone: "muted" },
 };
 
 export const SEVERITY_LABELS: Record<FindingSeverity, string> = {
