@@ -1,7 +1,13 @@
 import { Prisma } from "@prisma/client";
-import type { BudgetRecord, Contract, ContractEvent, Payment } from "@prisma/client";
+import type {
+  BudgetRecord,
+  BudgetRecordType,
+  Contract,
+  ContractEvent,
+  Payment,
+} from "@prisma/client";
 import { addDays, daysBetween } from "./dates";
-import type { CurrentEndDate } from "./types";
+import type { BudgetBackingStatus, CurrentEndDate } from "./types";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Parte 1 — cálculos derivados. Aritmética pura sobre los datos registrados:
@@ -109,11 +115,60 @@ export function computeBalance(
   return currentValue.minus(computePaidTotal(payments));
 }
 
-/** 1.4 — suma de CDP y RP. Que no cuadre con el valor vigente es un hallazgo
- *  (2.6), no un error: el expediente puede estar a medio cargar. */
+/**
+ * 1.4 — respaldo presupuestal: SOLO los RP.
+ *
+ * CDP y RP no son partidas acumulables. El CDP certifica que hay
+ * disponibilidad antes de comprometer; el RP lo consume al perfeccionarse el
+ * compromiso. Sumar ambos contaría dos veces el mismo dinero y todo expediente
+ * completo aparecería con el doble de respaldo del que tiene.
+ *
+ * Que el total no cuadre con el valor vigente es un hallazgo (2.6), no un
+ * error: el expediente puede estar a medio cargar.
+ */
 export function computeBudgetBackingTotal(records: BudgetRecord[]): Prisma.Decimal {
+  return sumOfType(records, "RP");
+}
+
+/**
+ * Disponibilidad certificada antes de comprometer. Se reporta aparte y NO se
+ * compara contra el valor vigente: responde a otra pregunta ("¿hubo
+ * disponibilidad suficiente?"), no a si el contrato quedó respaldado.
+ */
+export function computeCdpTotal(records: BudgetRecord[]): Prisma.Decimal {
+  return sumOfType(records, "CDP");
+}
+
+/**
+ * ¿Se registró ya el compromiso presupuestal?
+ *
+ * Condición única y compartida: la usa el estado del respaldo (más abajo) y la
+ * regla 2.6 en findings.ts. Estaba escrita dos veces y las dos partes tenían
+ * que coincidir para no contradecirse — reportar "no coincide" en la pantalla
+ * mientras el motor calla el hallazgo, o al revés.
+ */
+export function hasRegisteredRp(records: BudgetRecord[]): boolean {
+  return records.some((record) => record.type === "RP");
+}
+
+/**
+ * Cómo se lee el respaldo frente al valor vigente. No es un booleano porque
+ * son tres situaciones distintas: un contrato al que todavía no le han
+ * registrado el RP no está descuadrado, está a medio cargar, y mostrarlo como
+ * "no coincide" acusaría al expediente de algo que no ha pasado.
+ */
+export function computeBudgetBackingStatus(
+  currentValue: Prisma.Decimal,
+  backingTotal: Prisma.Decimal,
+  records: BudgetRecord[],
+): BudgetBackingStatus {
+  if (!hasRegisteredRp(records)) return "SIN_RP";
+  return backingTotal.equals(currentValue) ? "COINCIDE" : "NO_COINCIDE";
+}
+
+function sumOfType(records: BudgetRecord[], type: BudgetRecordType): Prisma.Decimal {
   return records.reduce(
-    (total, record) => total.plus(record.value),
+    (total, record) => (record.type === type ? total.plus(record.value) : total),
     new Prisma.Decimal(0),
   );
 }

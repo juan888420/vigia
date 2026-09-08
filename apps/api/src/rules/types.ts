@@ -111,13 +111,23 @@ export type CurrentEndDate =
 
 export type ContractStatus = "AL_DIA" | "CON_PENDIENTES" | "ATRASADO" | "SUSPENDIDO";
 
+/**
+ * Lectura del respaldo presupuestal. SIN_RP no es un caso de "no coincide":
+ * es un expediente al que todavía no le han registrado el compromiso, y por
+ * eso tampoco produce el hallazgo PRESUPUESTO_DESCUADRADO.
+ */
+export type BudgetBackingStatus = "COINCIDE" | "NO_COINCIDE" | "SIN_RP";
+
 export interface Diagnostic {
   currentValue: Prisma.Decimal;
   currentEndDate: CurrentEndDate;
   balance: Prisma.Decimal;
   budgetBacking: {
+    /** Solo RP: es lo que respalda el compromiso. Ver computeBudgetBackingTotal. */
     total: Prisma.Decimal;
-    matchesCurrentValue: boolean;
+    /** Solo CDP: disponibilidad previa. No se compara contra el valor vigente. */
+    cdpTotal: Prisma.Decimal;
+    matchStatus: BudgetBackingStatus;
   };
   status: ContractStatus;
   findings: Finding[];

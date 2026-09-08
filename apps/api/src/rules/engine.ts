@@ -1,6 +1,8 @@
 import {
   computeBalance,
+  computeBudgetBackingStatus,
   computeBudgetBackingTotal,
+  computeCdpTotal,
   computeCurrentEndDate,
   computeCurrentValue,
 } from "./derived";
@@ -23,6 +25,7 @@ export function computeDiagnostic(input: DiagnosticInput): Diagnostic {
   const currentEndDate = computeCurrentEndDate(input.contract, input.events);
   const balance = computeBalance(currentValue, input.payments);
   const backingTotal = computeBudgetBackingTotal(input.budgetRecords);
+  const cdpTotal = computeCdpTotal(input.budgetRecords);
 
   const findings = collectFindings(input, currentValue, currentEndDate, backingTotal, balance);
 
@@ -32,7 +35,8 @@ export function computeDiagnostic(input: DiagnosticInput): Diagnostic {
     balance,
     budgetBacking: {
       total: backingTotal,
-      matchesCurrentValue: backingTotal.equals(currentValue),
+      cdpTotal,
+      matchStatus: computeBudgetBackingStatus(currentValue, backingTotal, input.budgetRecords),
     },
     status: computeContractStatus(findings, currentEndDate),
     findings,

@@ -4,7 +4,7 @@ import type { PrismaClient } from "@prisma/client";
 import { prisma } from "../lib/prisma";
 import { dateOnly, decimalToString } from "../lib/serialize";
 import { prismaErrorResponse } from "../lib/prisma-errors";
-import { nullableDate, nullableMoney, nullableString, toDate } from "../lib/validation";
+import { nullableDate, nullableSignedMoney, nullableString, toDate } from "../lib/validation";
 
 // Historial de lo que le ocurre a un contrato: otrosíes, adiciones, prórrogas,
 // suspensiones, reinicios, terminación y liquidación.
@@ -39,7 +39,9 @@ const eventProperties = {
   type: { type: "string", enum: Object.values(EventType) },
   sequenceNumber: { type: ["integer", "null"], minimum: 1 },
   eventDate: { type: "string", format: "date" },
-  valueDelta: nullableMoney,
+  // Con signo: un otrosí puede corregir el valor a la baja. Es un delta,
+  // igual que daysDelta, no un monto absoluto (ver lib/validation.ts).
+  valueDelta: nullableSignedMoney,
   daysDelta: { type: ["integer", "null"] },
   startDate: nullableDate,
   endDate: nullableDate,

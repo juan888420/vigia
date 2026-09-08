@@ -40,7 +40,8 @@ function serializeDiagnostic(diagnostic: Diagnostic, today: Date) {
     balance: decimalToString(diagnostic.balance),
     budgetBacking: {
       total: decimalToString(diagnostic.budgetBacking.total),
-      matchesCurrentValue: diagnostic.budgetBacking.matchesCurrentValue,
+      cdpTotal: decimalToString(diagnostic.budgetBacking.cdpTotal),
+      matchStatus: diagnostic.budgetBacking.matchStatus,
     },
     status: diagnostic.status,
     findings: diagnostic.findings,

@@ -9,6 +9,7 @@ import type {
   Payment,
 } from "@prisma/client";
 import { daysBetween, formatDate } from "./dates";
+import { hasRegisteredRp } from "./derived";
 import { EVENT_TYPE_LABELS, GUARANTEE_TYPE_LABELS, eventLabel, formatMoney, paymentLabel } from "./labels";
 import type {
   CurrentEndDate,
@@ -311,22 +312,28 @@ export function paymentSequenceGaps(payments: Payment[]): Finding[] {
 // ── 2.6 Descuadre presupuestal ───────────────────────────────────────────────
 
 /**
- * Solo se compara cuando hay respaldo cargado. Un contrato sin ningún CDP ni
- * RP registrado no está descuadrado: está a medio cargar, y ese vacío ya lo
- * reporta DOCUMENTO_FALTANTE sobre el CDP y el RP. Sin esta condición, todo
- * expediente recién creado saldría con un descuadre igual a su valor total.
+ * Solo se compara cuando hay al menos un RP cargado. Un contrato sin RP no
+ * está descuadrado: está a medio cargar — puede tener su CDP y todavía no
+ * haberse perfeccionado el compromiso —, y ese vacío ya lo reporta
+ * DOCUMENTO_FALTANTE sobre el RP. Sin esta condición, todo expediente sin RP
+ * saldría con un descuadre igual a su valor total.
+ *
+ * La condición mira el tipo, no el conteo: desde que el respaldo son solo los
+ * RP (ver computeBudgetBackingTotal), un contrato con CDP y sin RP compararía
+ * contra cero. Se comparte con computeBudgetBackingStatus para que el hallazgo
+ * y lo que muestra la pantalla no puedan contradecirse.
  */
 export function budgetMismatch(
   currentValue: Prisma.Decimal,
   backingTotal: Prisma.Decimal,
   budgetRecords: BudgetRecord[],
 ): Finding[] {
-  if (budgetRecords.length === 0) return [];
+  if (!hasRegisteredRp(budgetRecords)) return [];
   if (backingTotal.equals(currentValue)) return [];
   return [
     finding(
       "PRESUPUESTO_DESCUADRADO",
-      `El respaldo presupuestal registrado (${formatMoney(backingTotal)}) no coincide con el valor vigente del contrato (${formatMoney(currentValue)}).`,
+      `El respaldo presupuestal registrado en RP (${formatMoney(backingTotal)}) no coincide con el valor vigente del contrato (${formatMoney(currentValue)}).`,
       [],
     ),
   ];

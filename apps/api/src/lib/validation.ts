@@ -12,10 +12,9 @@ export const nullableDate = { type: ["string", "null"], format: "date" } as cons
  * columna. El JSON de salida siempre es string (ver lib/serialize.ts): un
  * number de JSON es un IEEE double y redondearía el valor en silencio.
  *
- * No admite negativos: ninguno de los montos del dominio puede serlo — ni el
- * valor de un contrato, ni un pago, ni el valor asegurado de una póliza. Una
- * adición que resta valor se registra como un evento propio, no como un
- * importe en negativo.
+ * No admite negativos: ninguno de estos montos puede serlo — ni el valor de un
+ * contrato, ni un anticipo, ni un pago, ni el valor asegurado de una póliza.
+ * Son valores absolutos: un pago negativo no significa nada.
  */
 export const money = {
   type: ["string", "number"],
@@ -23,6 +22,28 @@ export const money = {
 } as const;
 
 export const nullableMoney = { ...money, type: ["string", "number", "null"] } as const;
+
+/**
+ * Dinero con signo. Excepción puntual para `ContractEvent.valueDelta`, que no
+ * es un monto sino un DELTA — el mismo tratamiento que ya tiene `daysDelta`.
+ *
+ * Una modificación puede reducir el valor, no solo aumentarlo: el caso real es
+ * el Otrosí 1 de CD-007-2025, que corrige a la baja un error de digitación
+ * ($199.996.549 → $199.905.071). Sin signo, esa corrección no se puede
+ * registrar sin falsear el valor inicial del contrato y perder el rastro de
+ * que un acto administrativo la corrigió.
+ *
+ * NO se usa en ningún otro campo: ver `money`.
+ */
+export const signedMoney = {
+  type: ["string", "number"],
+  pattern: "^-?\\d{1,13}(\\.\\d{1,2})?$",
+} as const;
+
+export const nullableSignedMoney = {
+  ...signedMoney,
+  type: ["string", "number", "null"],
+} as const;
 
 /** "2025-03-15" → Date a medianoche UTC, para que una columna @db.Date
  *  conserve el día sin desplazarse por zona horaria. */
