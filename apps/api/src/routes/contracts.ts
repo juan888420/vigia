@@ -5,6 +5,7 @@ import { normalizeContractNumber } from "../lib/contract-number";
 import { dateOnly, decimalToString } from "../lib/serialize";
 import { prismaErrorResponse } from "../lib/prisma-errors";
 import { money, nullableDate, nullableMoney, nullableString, toDate } from "../lib/validation";
+import { resolveInitialTermDays } from "../lib/contract-term";
 
 // Only Contract is exposed here. Payment, ContractEvent, Guarantee and
 // ContractDocument have no routes yet, and neither does the rules engine: this
@@ -131,6 +132,20 @@ export async function contractsRoutes(app: FastifyInstance) {
     async (request, reply) => {
       const body = request.body;
 
+      // El plazo no se copia del body sin más: con las dos fechas presentes se
+      // deriva de ellas y un número que las contradiga es un 400. Toda la
+      // decisión está en lib/contract-term.ts, compartida con el PATCH.
+      const startDate = toDate(body.startDate);
+      const initialEndDate = toDate(body.initialEndDate);
+      const termDays = resolveInitialTermDays({
+        startDate,
+        initialEndDate,
+        initialTermDays: body.initialTermDays,
+      });
+      if (!termDays.ok) {
+        return reply.status(400).send({ error: termDays.error });
+      }
+
       try {
         const contract = await prisma.contract.create({
           data: {
@@ -143,10 +158,10 @@ export async function contractsRoutes(app: FastifyInstance) {
             contractorId: body.contractorId?.trim() || null,
             supervisor: body.supervisor?.trim() || null,
             initialValue: new Prisma.Decimal(body.initialValue),
-            initialTermDays: body.initialTermDays ?? null,
+            initialTermDays: termDays.value,
             signatureDate: toDate(body.signatureDate),
-            startDate: toDate(body.startDate),
-            initialEndDate: toDate(body.initialEndDate),
+            startDate,
+            initialEndDate,
             advanceValue: toDecimal(body.advanceValue),
           },
           include: contractInclude,
@@ -169,7 +184,15 @@ export async function contractsRoutes(app: FastifyInstance) {
 
       const current = await prisma.contract.findUnique({
         where: { id: request.params.id },
-        select: { id: true, officeId: true, normalizedNumber: true },
+        select: {
+          id: true,
+          officeId: true,
+          normalizedNumber: true,
+          // Necesarias para fusionar: un PATCH que mueve UNA fecha recalcula el
+          // plazo contra la otra, la que ya estaba guardada.
+          startDate: true,
+          initialEndDate: true,
+        },
       });
       if (!current) {
         return reply.status(404).send({ error: "Contrato no encontrado" });
@@ -186,10 +209,39 @@ export async function contractsRoutes(app: FastifyInstance) {
       if (body.contractorId !== undefined) data.contractorId = body.contractorId?.trim() || null;
       if (body.supervisor !== undefined) data.supervisor = body.supervisor?.trim() || null;
       if (body.initialValue !== undefined) data.initialValue = new Prisma.Decimal(body.initialValue);
-      if (body.initialTermDays !== undefined) data.initialTermDays = body.initialTermDays;
       if (body.signatureDate !== undefined) data.signatureDate = toDate(body.signatureDate);
       if (body.startDate !== undefined) data.startDate = toDate(body.startDate);
       if (body.initialEndDate !== undefined) data.initialEndDate = toDate(body.initialEndDate);
+
+      // El plazo solo se revisa si el PATCH toca alguna de las tres claves que
+      // lo determinan. Para el resto rige la semántica normal de PATCH —clave
+      // ausente, campo intacto—: cambiar el supervisor no puede borrar un plazo
+      // manual, que es el único dato del contrato cuyo valor no se puede
+      // reconstruir desde las fechas cuando estas no están completas.
+      const touchesTerm =
+        body.startDate !== undefined ||
+        body.initialEndDate !== undefined ||
+        body.initialTermDays !== undefined;
+
+      if (touchesTerm) {
+        // Fechas EFECTIVAS: lo que trae el body, o lo ya guardado si la clave
+        // no vino. Sin fusionar, un PATCH que solo mueve initialEndDate
+        // recalcularía contra un startDate inexistente y borraría el plazo.
+        const effectiveStartDate =
+          body.startDate !== undefined ? toDate(body.startDate) : current.startDate;
+        const effectiveEndDate =
+          body.initialEndDate !== undefined ? toDate(body.initialEndDate) : current.initialEndDate;
+
+        const termDays = resolveInitialTermDays({
+          startDate: effectiveStartDate,
+          initialEndDate: effectiveEndDate,
+          initialTermDays: body.initialTermDays,
+        });
+        if (!termDays.ok) {
+          return reply.status(400).send({ error: termDays.error });
+        }
+        data.initialTermDays = termDays.value;
+      }
       if (body.advanceValue !== undefined) data.advanceValue = toDecimal(body.advanceValue);
 
       if (body.number !== undefined) {
