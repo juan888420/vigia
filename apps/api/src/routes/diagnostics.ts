@@ -45,6 +45,10 @@ function serializeDiagnostic(diagnostic: Diagnostic, today: Date) {
     },
     status: diagnostic.status,
     findings: diagnostic.findings,
+    // Se envía completo, presentes incluidos: la pantalla dibuja el avance del
+    // expediente, no solo lo que falta.
+    stages: diagnostic.stages,
+    paymentSupport: diagnostic.paymentSupport,
   };
 }
 

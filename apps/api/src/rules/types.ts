@@ -1,4 +1,4 @@
-import type { Prisma, AlertSeverity } from "@prisma/client";
+import type { Prisma, AlertSeverity, ContractStage } from "@prisma/client";
 import type {
   BudgetRecord,
   Contract,
@@ -39,6 +39,57 @@ export interface DiagnosticInput {
   overrides: ContractRequirementOverride[];
   /** Medianoche UTC del día contra el que se evalúan los vencimientos. */
   today: Date;
+}
+
+/**
+ * Un requisito documental cruzado contra los documentos del contrato.
+ *
+ * Es el dato intermedio del que salen DOS lecturas de la misma comparación:
+ * los hallazgos 2.1/2.2, que listan solo lo ausente y obligatorio, y `stages`,
+ * que lista todo con su estado. Ver rules/checklist.ts.
+ */
+export interface ChecklistItem {
+  requirement: RequirementWithType;
+  /** `required` efectivo, ya corregido por los overrides del contrato. */
+  required: boolean;
+  present: boolean;
+  /** Solo con `appliesToEachPayment`: los pagos a los que les falta el
+   *  soporte. Vacío en los requisitos de contrato. */
+  missingForPayments: Payment[];
+}
+
+export interface DiagnosticStageItem {
+  documentTypeId: string;
+  name: string;
+  /** false = este contrato no lo exige (override). No cuenta como falta. */
+  required: boolean;
+  present: boolean;
+}
+
+/**
+ * Completitud documental de UN pago. Es la mitad por-pago del mismo checklist:
+ * lo que 2.2 reporta pago a pago, contado.
+ *
+ * Vive aparte de `stages` porque no es del contrato sino de cada pago: meter
+ * los soportes de tres pagos en el riel del expediente lo hace ilegible sin
+ * decir nada útil ("0/16" cuando 12 de esos 16 dependen de cuántos pagos haya).
+ */
+export interface PaymentSupport {
+  paymentId: string;
+  sequenceNumber: number;
+  /** Soportes exigidos por pago que este pago ya tiene. */
+  present: number;
+  /** Cuántos se le exigen. Igual para todos los pagos del contrato. */
+  total: number;
+  /** Nombres de los que faltan, en el orden del expediente. */
+  missing: string[];
+}
+
+/** El checklist agrupado por etapa, en el orden en que se recorre un
+ *  expediente. Alimenta el riel de etapas de la pantalla de detalle. */
+export interface DiagnosticStage {
+  stage: ContractStage;
+  items: DiagnosticStageItem[];
 }
 
 export const RULE_CODES = [
@@ -131,4 +182,9 @@ export interface Diagnostic {
   };
   status: ContractStatus;
   findings: Finding[];
+  /** El expediente documental completo, no solo lo que falta. Sale del mismo
+   *  cruce que los hallazgos 2.1/2.2 (ver rules/checklist.ts). */
+  stages: DiagnosticStage[];
+  /** Completitud de soportes por pago, del mismo cruce. */
+  paymentSupport: PaymentSupport[];
 }

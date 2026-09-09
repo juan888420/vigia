@@ -4,14 +4,15 @@ import type {
   BudgetRecord,
   ContractDocument,
   ContractEvent,
-  ContractRequirementOverride,
   Guarantee,
   Payment,
 } from "@prisma/client";
+import { isPresent } from "./checklist";
 import { daysBetween, formatDate } from "./dates";
 import { hasRegisteredRp } from "./derived";
 import { EVENT_TYPE_LABELS, GUARANTEE_TYPE_LABELS, eventLabel, formatMoney, paymentLabel } from "./labels";
 import type {
+  ChecklistItem,
   CurrentEndDate,
   DiagnosticInput,
   Finding,
@@ -84,50 +85,19 @@ const documentTypeRef = (requirement: RequirementWithType): FindingReference => 
   label: requirement.documentType.name,
 });
 
-/**
- * Un documento cuenta como presente si lo clasificó una persona, o si lo
- * propuso la IA y alguien lo validó. Un AI_SUGGESTED sin validar está en la
- * cola de revisión: el dato todavía no existe (README → flujo obligatorio).
- */
-function isPresent(document: ContractDocument): boolean {
-  return document.source === "MANUAL" || document.validatedAt !== null;
-}
-
-/**
- * Requisitos que este contrato debe cumplir de verdad: la plantilla de la
- * modalidad, corregida por las excepciones del contrato.
- *
- * ContractRequirementOverride existe justamente para esto ("un contrato de
- * obra no exige lo mismo que uno de suministro"). Sin aplicarlo, el motor
- * reportaría como faltantes documentos que alguien ya declaró no aplicables,
- * con su motivo escrito.
- */
-export function resolveRequirements(
-  requirements: RequirementWithType[],
-  overrides: ContractRequirementOverride[],
-): RequirementWithType[] {
-  const overridden = new Map(overrides.map((o) => [o.requirementId, o.required]));
-  return requirements.filter(
-    (requirement) => overridden.get(requirement.id) ?? requirement.required,
-  );
-}
-
 // ── 2.1 Documento obligatorio faltante, a nivel de contrato ──────────────────
+//
+// La comparación ya está hecha en el checklist (rules/checklist.ts): aquí solo
+// se traduce a hallazgos lo que quedó ausente y sigue siendo obligatorio.
 
-export function missingContractDocuments(
-  requirements: RequirementWithType[],
-  documents: ContractDocument[],
-): Finding[] {
-  const present = new Set(documents.filter(isPresent).map((document) => document.documentTypeId));
-
-  return requirements
-    .filter((requirement) => !requirement.appliesToEachPayment)
-    .filter((requirement) => !present.has(requirement.documentTypeId))
-    .map((requirement) =>
+export function missingContractDocuments(checklist: ChecklistItem[]): Finding[] {
+  return checklist
+    .filter((item) => item.required && !item.requirement.appliesToEachPayment && !item.present)
+    .map((item) =>
       finding(
         "DOCUMENTO_FALTANTE",
-        `Falta el documento obligatorio "${requirement.documentType.name}".`,
-        [documentTypeRef(requirement)],
+        `Falta el documento obligatorio "${item.requirement.documentType.name}".`,
+        [documentTypeRef(item.requirement)],
       ),
     );
 }
@@ -135,32 +105,25 @@ export function missingContractDocuments(
 // ── 2.2 Soporte de pago faltante ─────────────────────────────────────────────
 
 export function missingPaymentDocuments(
-  requirements: RequirementWithType[],
+  checklist: ChecklistItem[],
   payments: Payment[],
-  documents: ContractDocument[],
 ): Finding[] {
-  // Se evalúan todos los pagos registrados, incluidos los anulados: un pago
-  // CANCELLED no suma al saldo, pero sigue siendo un trámite del expediente y
-  // el cliente no ha dicho que sus soportes dejen de exigirse.
-  const perPayment = requirements.filter((requirement) => requirement.appliesToEachPayment);
+  const perPayment = checklist.filter(
+    (item) => item.required && item.requirement.appliesToEachPayment,
+  );
   if (perPayment.length === 0) return [];
 
-  const present = new Set(
-    documents
-      .filter(isPresent)
-      .filter((document) => document.paymentId !== null)
-      .map((document) => `${document.paymentId}:${document.documentTypeId}`),
-  );
-
+  // Se recorre por pago y dentro por requisito, no al revés: el expediente se
+  // lee pago a pago, y así los hallazgos de un mismo pago salen juntos.
   const findings: Finding[] = [];
   for (const payment of [...payments].sort((a, b) => a.sequenceNumber - b.sequenceNumber)) {
-    for (const requirement of perPayment) {
-      if (present.has(`${payment.id}:${requirement.documentTypeId}`)) continue;
+    for (const item of perPayment) {
+      if (!item.missingForPayments.some((missing) => missing.id === payment.id)) continue;
       findings.push(
         finding(
           "DOCUMENTO_FALTANTE_PAGO",
-          `Al pago ${payment.sequenceNumber} le falta el soporte obligatorio "${requirement.documentType.name}".`,
-          [paymentRef(payment), documentTypeRef(requirement)],
+          `Al pago ${payment.sequenceNumber} le falta el soporte obligatorio "${item.requirement.documentType.name}".`,
+          [paymentRef(payment), documentTypeRef(item.requirement)],
         ),
       );
     }
@@ -488,13 +451,12 @@ export function expiredGuaranteeFindings(
  *  bloquea, después lo que falta por completar. */
 export function collectFindings(
   input: DiagnosticInput,
+  checklist: ChecklistItem[],
   currentValue: Prisma.Decimal,
   currentEndDate: CurrentEndDate,
   backingTotal: Prisma.Decimal,
   balance: Prisma.Decimal,
 ): Finding[] {
-  const requirements = resolveRequirements(input.requirements, input.overrides);
-
   return [
     ...contractDeadlineFindings(currentEndDate, input.events, input.today),
     ...negativeBalance(balance),
@@ -507,7 +469,7 @@ export function collectFindings(
     ...advanceAndFinalPayments(input.payments),
     ...eventSequenceGaps(input.events),
     ...paymentSequenceGaps(input.payments),
-    ...missingContractDocuments(requirements, input.documents),
-    ...missingPaymentDocuments(requirements, input.payments, input.documents),
+    ...missingContractDocuments(checklist),
+    ...missingPaymentDocuments(checklist, input.payments),
   ];
 }

@@ -6,6 +6,12 @@ import {
   computeCurrentEndDate,
   computeCurrentValue,
 } from "./derived";
+import {
+  buildDocumentChecklist,
+  buildPaymentSupport,
+  buildStages,
+  resolveRequirements,
+} from "./checklist";
 import { collectFindings } from "./findings";
 import { computeContractStatus } from "./status";
 import type { Diagnostic, DiagnosticInput } from "./types";
@@ -27,7 +33,20 @@ export function computeDiagnostic(input: DiagnosticInput): Diagnostic {
   const backingTotal = computeBudgetBackingTotal(input.budgetRecords);
   const cdpTotal = computeCdpTotal(input.budgetRecords);
 
-  const findings = collectFindings(input, currentValue, currentEndDate, backingTotal, balance);
+  // El cruce catálogo-contra-documentos se hace UNA vez y alimenta las dos
+  // salidas: los hallazgos (solo lo ausente) y las etapas (todo con su
+  // estado). Separarlos permitiría que se contradijeran.
+  const requirements = resolveRequirements(input.requirements, input.overrides);
+  const checklist = buildDocumentChecklist(requirements, input.payments, input.documents);
+
+  const findings = collectFindings(
+    input,
+    checklist,
+    currentValue,
+    currentEndDate,
+    backingTotal,
+    balance,
+  );
 
   return {
     currentValue,
@@ -40,6 +59,8 @@ export function computeDiagnostic(input: DiagnosticInput): Diagnostic {
     },
     status: computeContractStatus(findings, currentEndDate),
     findings,
+    stages: buildStages(checklist),
+    paymentSupport: buildPaymentSupport(checklist, input.payments),
   };
 }
 
