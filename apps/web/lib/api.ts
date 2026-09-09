@@ -1,6 +1,5 @@
-// Cliente del API real. Convive con lib/mock-data.ts: la pantalla de detalle
-// sigue siendo el wireframe con datos mock hasta que existan Payment /
-// ContractEvent / Guarantee.
+// Cliente del API real. Es la única fuente de datos de la app: el wireframe
+// con datos mock ya no existe.
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3333";
 
@@ -299,6 +298,34 @@ export type CurrentEndDate =
     }
   | { state: "SIN_FECHAS_BASE" };
 
+/** Un tipo documental del expediente con su estado real. `required: false`
+ *  es un requisito que este contrato no exige (ContractRequirementOverride):
+ *  se muestra, pero no cuenta como falta. */
+export interface DiagnosticStageItem {
+  documentTypeId: string;
+  name: string;
+  required: boolean;
+  present: boolean;
+}
+
+/** Completitud de soportes de UN pago. Los requisitos que se exigen una vez
+ *  por pago no están en `stages`: su denominador depende de cuántos pagos haya
+ *  y solo se entienden mirando cada pago, no el riel del contrato. */
+export interface PaymentSupport {
+  paymentId: string;
+  sequenceNumber: number;
+  present: number;
+  total: number;
+  missing: string[];
+}
+
+/** El expediente agrupado por etapa. Sale del MISMO cruce que los hallazgos
+ *  DOCUMENTO_FALTANTE, así que el riel no puede contradecirlos. */
+export interface DiagnosticStage {
+  stage: ContractStage;
+  items: DiagnosticStageItem[];
+}
+
 export interface Diagnostic {
   contract: { id: string; number: string; object: string };
   computedAt: string;
@@ -311,6 +338,8 @@ export interface Diagnostic {
   budgetBacking: { total: string; cdpTotal: string; matchStatus: BudgetBackingStatus };
   status: ContractStatus;
   findings: Finding[];
+  stages: DiagnosticStage[];
+  paymentSupport: PaymentSupport[];
 }
 
 export class ApiError extends Error {

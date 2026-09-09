@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft, Plus } from "lucide-react";
-import { ApiError, getContract, listPayments } from "@/lib/api";
+import { ApiError, getContract, getDiagnostic, listPayments } from "@/lib/api";
 import { PaymentRow } from "@/components/PaymentRow";
 import { ContractSubnav } from "@/components/ContractSubnav";
 
@@ -10,8 +10,15 @@ export const dynamic = "force-dynamic";
 export default async function PagosPage({ params }: { params: { id: string } }) {
   let contract;
   let payments;
+  let diagnostic;
   try {
-    [contract, payments] = await Promise.all([getContract(params.id), listPayments(params.id)]);
+    // El diagnóstico se pide aquí solo por `paymentSupport`: la completitud
+    // documental de un pago la decide el motor de reglas, no esta pantalla.
+    [contract, payments, diagnostic] = await Promise.all([
+      getContract(params.id),
+      listPayments(params.id),
+      getDiagnostic(params.id),
+    ]);
   } catch (error) {
     if (error instanceof ApiError && error.status === 404) notFound();
     return (
@@ -65,7 +72,12 @@ export default async function PagosPage({ params }: { params: { id: string } }) 
       ) : (
         <div className="space-y-3">
           {payments.map((payment) => (
-            <PaymentRow key={payment.id} payment={payment} contractId={contract.id} />
+            <PaymentRow
+              key={payment.id}
+              payment={payment}
+              contractId={contract.id}
+              support={diagnostic.paymentSupport.find((entry) => entry.paymentId === payment.id)}
+            />
           ))}
         </div>
       )}

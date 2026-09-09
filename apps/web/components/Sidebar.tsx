@@ -30,7 +30,7 @@ export function Sidebar() {
       </nav>
 
       <div className="border-t border-border px-4 py-3">
-        <p className="text-xs text-text-muted">Vigía · v0.1 wireframe</p>
+        <p className="text-xs text-text-muted">Vigía · v0.1</p>
       </div>
     </aside>
   );

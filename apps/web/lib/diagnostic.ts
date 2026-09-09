@@ -1,5 +1,6 @@
 import type {
   BudgetBackingStatus,
+  ContractStage,
   ContractStatus,
   FindingReference,
   FindingSeverity,
@@ -37,6 +38,13 @@ export const BUDGET_BACKING_PRESENTATION: Record<
   COINCIDE: { note: "Coincide con el valor vigente", tone: "default" },
   NO_COINCIDE: { note: "No coincide con el valor vigente", tone: "warning" },
   SIN_RP: { note: "Aún no se ha registrado ningún RP", tone: "muted" },
+};
+
+/** Las tres etapas del expediente, como las nombra el cliente. */
+export const STAGE_LABELS: Record<ContractStage, string> = {
+  PRECONTRACTUAL: "Precontractual",
+  CONTRACTUAL: "Contractual",
+  POSTCONTRACTUAL: "Postcontractual",
 };
 
 export const SEVERITY_LABELS: Record<FindingSeverity, string> = {

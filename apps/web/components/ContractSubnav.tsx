@@ -1,9 +1,12 @@
 import Link from "next/link";
 
-// Las cinco caras del expediente que ya existen, más el diagnóstico, que no
-// es una cara sino la conclusión: lo que el motor de reglas deduce de todas
-// ellas. El detalle mock (/contratos/[id]) no entra aquí: no muestra datos
-// reales todavía.
+// Las cinco caras del expediente. El diagnóstico NO es una de ellas: no es una
+// cara sino la conclusión que el motor de reglas saca de todas, y por eso vive
+// en la pantalla principal del contrato (/contratos/[id]) en vez de en una
+// pestaña aparte.
+//
+// `active` es opcional: en el detalle no hay ninguna pestaña activa porque el
+// detalle es la raíz de la que cuelgan todas.
 
 const TABS = [
   { key: "presupuesto", label: "Presupuesto" },
@@ -11,7 +14,6 @@ const TABS = [
   { key: "eventos", label: "Eventos" },
   { key: "garantias", label: "Garantías" },
   { key: "documentos", label: "Documentos" },
-  { key: "diagnostico", label: "Diagnóstico" },
 ] as const;
 
 export function ContractSubnav({
@@ -19,7 +21,7 @@ export function ContractSubnav({
   active,
 }: {
   contractId: string;
-  active: (typeof TABS)[number]["key"];
+  active?: (typeof TABS)[number]["key"];
 }) {
   return (
     <nav className="mb-8 mt-6 flex items-center gap-1 border-b border-border">
