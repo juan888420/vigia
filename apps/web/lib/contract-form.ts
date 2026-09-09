@@ -56,6 +56,32 @@ function nullIfEmpty(value: string) {
  * Lo que se guarda sigue siendo `initialTermDays`. El schema no cambia y el
  * motor de reglas no sabe nada de esto.
  *
+ * QUÉ PREGUNTA RESPONDE ESTA FUNCIÓN, y cuál no: responde "¿cuánto DURA un
+ * plazo pactado?", no "¿cuánto hay que DESPLAZAR una fecha?". Son dos
+ * convenciones distintas que conviven a propósito en el sistema, y las dos son
+ * correctas para lo que cada una representa:
+ *
+ *   · `initialTermDays` (esta función): duración inclusiva. Del 2025-05-28 al
+ *     2025-08-27 son 92 días porque el 28 de mayo ya es un día contractual.
+ *   · `ContractEvent.daysDelta` (motor de reglas): desplazamiento plano. Un
+ *     otrosí que corre el vencimiento del 2025-08-27 al 2025-11-27 vale 92
+ *     porque es la diferencia calendario entre las dos fechas, sin el +1.
+ *     Ver `computeCurrentEndDate` en apps/api/src/rules/derived.ts.
+ *
+ * Que ambas den 92 en CD-007-2025 es coincidencia aritmética, no equivalencia.
+ *
+ * Hoy no pueden contradecirse porque `initialTermDays` es un valor puramente
+ * INFORMATIVO: ningún cálculo del motor de reglas lo consume. La fecha de
+ * terminación vigente se deriva de `initialEndDate` más los eventos, nunca del
+ * plazo en días.
+ *
+ * ⚠ SI ALGUNA VEZ SE ESCRIBE UNA REGLA que compare `initialTermDays` contra
+ * (`initialEndDate` − `startDate`) para detectar expedientes descuadrados, esa
+ * comparación tiene que rehacer el conteo INCLUSIVO de aquí (diferencia + 1).
+ * Escribirla con el `daysBetween`/`addDays` del motor de reglas, que son
+ * planos, marcaría como inconsistentes todos los contratos bien cargados por
+ * un día de diferencia.
+ *
  * Devuelve null si falta alguna fecha o si la terminación es anterior al
  * inicio. Terminación igual al inicio SÍ es válida y vale 1 día: con conteo
  * inclusivo, un contrato de un solo día es exactamente eso.

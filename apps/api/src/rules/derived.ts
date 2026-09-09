@@ -54,6 +54,23 @@ export function computeCurrentValue(contract: Contract, events: ContractEvent[])
  * real depende de cuándo se reanude, que todavía no se sabe. Lo acumulado
  * hasta ese punto es exactamente la fecha provisional — las suspensiones ya
  * cerradas y las prórrogas anteriores a la suspensión abierta.
+ *
+ * CONVENCIÓN DE CONTEO: `daysDelta` se aplica con suma plana (`addDays`), a
+ * propósito. Representa el DESPLAZAMIENTO de una fecha de vencimiento, no una
+ * duración: "tres meses más" sobre un contrato que vencía el 2025-08-27 es la
+ * diferencia calendario hasta el 2025-11-27, o sea 92 días. Sumarle 1 aquí,
+ * como si fuera un plazo, correría el vencimiento un día de más.
+ *
+ * Es una convención DISTINTA a la de `Contract.initialTermDays`, que sí es una
+ * duración inclusiva: ahí el día de inicio cuenta como primer día del plazo
+ * (ver `daysBetween` en apps/web/lib/contract-form.ts). Las dos son correctas
+ * para lo que cada una representa y aquí no se mezclan: este cálculo parte de
+ * `initialEndDate` y nunca lee `initialTermDays`.
+ *
+ * ⚠ Una regla futura que quiera verificar que `initialTermDays` cuadre con
+ * (`initialEndDate` − `startDate`) NO puede usar el `addDays`/`daysBetween` de
+ * este módulo: tiene que reproducir el conteo inclusivo del formulario
+ * (diferencia + 1), o marcará como descuadrado todo contrato bien cargado.
  */
 export function computeCurrentEndDate(
   contract: Contract,
