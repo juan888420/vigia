@@ -1,5 +1,6 @@
 import Fastify from "fastify";
 import cors from "@fastify/cors";
+import multipart from "@fastify/multipart";
 import { healthRoutes } from "./routes/health";
 import { contractsRoutes } from "./routes/contracts";
 import { paymentsRoutes } from "./routes/payments";
@@ -9,6 +10,7 @@ import { budgetRoutes } from "./routes/budget";
 import { documentsRoutes } from "./routes/documents";
 import { catalogRoutes } from "./routes/catalog";
 import { diagnosticsRoutes } from "./routes/diagnostics";
+import { classificationRoutes } from "./routes/classification";
 import { prisma } from "./lib/prisma";
 
 const app = Fastify({
@@ -21,6 +23,12 @@ const app = Fastify({
 
 async function main() {
   await app.register(cors, { origin: true });
+  // Solo lo usa la clasificación documental. Un archivo por petición: este
+  // endpoint clasifica UN documento, y aceptar varios en silencio haría creer
+  // que se procesaron todos.
+  await app.register(multipart, {
+    limits: { fileSize: 20 * 1024 * 1024, files: 1 },
+  });
 
   await app.register(healthRoutes);
   await app.register(catalogRoutes);
@@ -34,6 +42,10 @@ async function main() {
   // Sin prefijo y aparte de contractsRoutes: no es un CRUD del contrato sino
   // el motor de reglas leyendo todo el expediente.
   await app.register(diagnosticsRoutes);
+  // El único punto de IA del sistema. Aparte del CRUD de documentos porque no
+  // escribe nada: propone una clasificación que el usuario tiene que confirmar
+  // contra POST /contratos/:id/documentos.
+  await app.register(classificationRoutes);
 
   app.addHook("onClose", async () => {
     await prisma.$disconnect();

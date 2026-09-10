@@ -9,13 +9,16 @@
     "test": "tsx --test \"src/**/*.test.ts\""
   },
   "dependencies": {
-    "fastify": "^4.28.1",
+    "@anthropic-ai/sdk": "^0.124.0",
     "@fastify/cors": "^9.0.1",
-    "@prisma/client": "^5.20.0"
+    "@fastify/multipart": "^8.3.1",
+    "@prisma/client": "^5.20.0",
+    "fastify": "^4.28.1",
+    "pdf-parse": "^2.4.5"
   },
   "devDependencies": {
+    "@types/node": "^22.7.4",
     "tsx": "^4.19.1",
-    "typescript": "^5.6.2",
-    "@types/node": "^22.7.4"
+    "typescript": "^5.6.2"
   }
 }
