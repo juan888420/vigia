@@ -56,6 +56,10 @@ export interface ChecklistItem {
   /** Solo con `appliesToEachPayment`: los pagos a los que les falta el
    *  soporte. Vacío en los requisitos de contrato. */
   missingForPayments: Payment[];
+  /** Aclaración de presentación cuando el dato existe en otra parte del
+   *  expediente pero el archivo no. No participa en ningún cálculo: ver
+   *  `budgetNote` en rules/checklist.ts. */
+  note?: string;
 }
 
 export interface DiagnosticStageItem {
@@ -64,6 +68,9 @@ export interface DiagnosticStageItem {
   /** false = este contrato no lo exige (override). No cuenta como falta. */
   required: boolean;
   present: boolean;
+  /** Por qué falta el archivo aunque el dato ya esté cargado en otra pantalla.
+   *  Solo texto: el ítem sigue ausente y sigue contando como falta. */
+  note?: string;
 }
 
 /**
@@ -136,6 +143,10 @@ export interface Finding {
   severity: AlertSeverity;
   message: string;
   references: FindingReference[];
+  /** Aclaración opcional. NO altera el hallazgo: misma severidad, mismo
+   *  `ruleCode`, sigue contando. Existe para que un hallazgo que se lee como
+   *  contradicción con otra parte del diagnóstico se explique solo. */
+  note?: string;
 }
 
 /**

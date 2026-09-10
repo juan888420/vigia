@@ -1,4 +1,10 @@
-import type { ContractDocument, ContractRequirementOverride, Payment } from "@prisma/client";
+import type {
+  BudgetRecord,
+  BudgetRecordType,
+  ContractDocument,
+  ContractRequirementOverride,
+  Payment,
+} from "@prisma/client";
 import type {
   ChecklistItem,
   DiagnosticStage,
@@ -51,6 +57,42 @@ export function resolveRequirements(
 }
 
 /**
+ * El CDP y el RP viven en DOS sitios del expediente: como fila en Presupuesto
+ * (el número y el valor, que es el dato del que sale budgetBacking) y como PDF
+ * en Documentos (el soporte escaneado). Tener el número cargado y el archivo
+ * no es lo normal mientras se arma el expediente — pero en pantalla se lee
+ * como una contradicción: "respaldo COINCIDE" justo al lado de "falta el RP".
+ *
+ * Esta nota explica esa diferencia y NADA más. El requisito sigue ausente,
+ * sigue siendo WARNING y sigue contando como falta: comparar filas de
+ * BudgetRecord contra requisitos documentales sería mezclar dos cruces
+ * distintos y daría por presente un documento que nadie ha subido.
+ *
+ * El caso inverso —el PDF cargado sin la fila en Presupuesto— no lleva nota:
+ * ya lo dicen matchStatus SIN_RP y el hallazgo PRESUPUESTO_DESCUADRADO.
+ */
+const BUDGET_BACKED_DOCUMENT_TYPES: Record<string, BudgetRecordType> = {
+  CDP: "CDP",
+  RP: "RP",
+};
+
+function budgetNote(
+  requirement: RequirementWithType,
+  budgetRecords: BudgetRecord[],
+): string | undefined {
+  const type = BUDGET_BACKED_DOCUMENT_TYPES[requirement.documentType.code];
+  if (!type) return undefined;
+
+  const numbers = budgetRecords
+    .filter((record) => record.type === type)
+    .map((record) => record.number)
+    .sort((a, b) => a.localeCompare(b));
+  if (numbers.length === 0) return undefined;
+
+  return `El número está registrado en Presupuesto (${type} ${numbers.join(", ")}), pero el documento aún no se ha subido a Documentos.`;
+}
+
+/**
  * Compara los requisitos contra los documentos cargados, una sola vez.
  *
  * Para los requisitos por pago (`appliesToEachPayment`) el criterio es el
@@ -62,6 +104,7 @@ export function buildDocumentChecklist(
   requirements: RequirementWithType[],
   payments: Payment[],
   documents: ContractDocument[],
+  budgetRecords: BudgetRecord[],
 ): ChecklistItem[] {
   const validated = documents.filter(isPresent);
 
@@ -78,11 +121,15 @@ export function buildDocumentChecklist(
 
   return requirements.map((requirement) => {
     if (!requirement.appliesToEachPayment) {
+      const present = presentTypes.has(requirement.documentTypeId);
       return {
         requirement,
         required: requirement.required,
-        present: presentTypes.has(requirement.documentTypeId),
+        present,
         missingForPayments: [],
+        // Solo cuando falta: sobre un requisito ya cubierto no hay nada que
+        // aclarar.
+        note: present ? undefined : budgetNote(requirement, budgetRecords),
       };
     }
 
@@ -133,6 +180,7 @@ export function buildStages(checklist: ChecklistItem[]): DiagnosticStage[] {
         name: item.requirement.documentType.name,
         required: item.required,
         present: item.present,
+        note: item.note,
       })),
   })).filter((stage) => stage.items.length > 0);
 }

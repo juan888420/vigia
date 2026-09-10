@@ -37,7 +37,12 @@ export function computeDiagnostic(input: DiagnosticInput): Diagnostic {
   // salidas: los hallazgos (solo lo ausente) y las etapas (todo con su
   // estado). Separarlos permitiría que se contradijeran.
   const requirements = resolveRequirements(input.requirements, input.overrides);
-  const checklist = buildDocumentChecklist(requirements, input.payments, input.documents);
+  const checklist = buildDocumentChecklist(
+    requirements,
+    input.payments,
+    input.documents,
+    input.budgetRecords,
+  );
 
   const findings = collectFindings(
     input,

@@ -57,8 +57,13 @@ const SEVERITY: Record<RuleCode, AlertSeverity> = {
   AVISO_15_DIAS: "INFO",
 };
 
-function finding(ruleCode: RuleCode, message: string, references: FindingReference[]): Finding {
-  return { ruleCode, severity: SEVERITY[ruleCode], message, references };
+function finding(
+  ruleCode: RuleCode,
+  message: string,
+  references: FindingReference[],
+  note?: string,
+): Finding {
+  return { ruleCode, severity: SEVERITY[ruleCode], message, references, note };
 }
 
 const eventRef = (event: ContractEvent): FindingReference => ({
@@ -98,6 +103,9 @@ export function missingContractDocuments(checklist: ChecklistItem[]): Finding[] 
         "DOCUMENTO_FALTANTE",
         `Falta el documento obligatorio "${item.requirement.documentType.name}".`,
         [documentTypeRef(item.requirement)],
+        // La nota viene del checklist, no se recalcula aquí: el riel de etapas
+        // y el hallazgo tienen que decir exactamente lo mismo.
+        item.note,
       ),
     );
 }
