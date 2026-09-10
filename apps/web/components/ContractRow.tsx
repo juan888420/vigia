@@ -1,10 +1,15 @@
+import Link from "next/link";
 import type { Contract } from "@/lib/api";
 import { formatMoney } from "@/lib/api";
 import { ContractActions } from "./ContractActions";
 
-// Muestra únicamente lo que está guardado en la base. Sin estado, sin avance de
-// pagos y sin alertas: eso lo produce el motor de reglas, que no existe todavía.
-// Tampoco enlaza al detalle, que sigue siendo el wireframe con datos mock.
+// Muestra únicamente lo que está guardado en la base. El estado, el saldo y los
+// hallazgos no salen aquí: los calcula el motor de reglas y viven en el detalle,
+// al que se llega por el número del contrato.
+//
+// El enlace envuelve el número y no la tarjeta entera: la fila ya contiene sus
+// propias acciones (editar, eliminar), y anidar botones dentro de un enlace
+// deja un objetivo de clic ambiguo.
 
 function Field({ label, value }: { label: string; value: string | null }) {
   return (
@@ -23,7 +28,12 @@ export function ContractRow({ contract }: { contract: Contract }) {
       <div className="flex items-start justify-between gap-4">
         <div className="min-w-0">
           <div className="flex items-center gap-2">
-            <span className="font-mono text-sm text-text-primary">{contract.number}</span>
+            <Link
+              href={`/contratos/${contract.id}`}
+              className="font-mono text-sm text-text-primary underline-offset-4 transition-colors hover:text-accent hover:underline"
+            >
+              {contract.number}
+            </Link>
             <span className="rounded border border-border-strong px-1.5 py-0.5 font-mono text-[10px] text-text-muted">
               {contract.contractType.code}
             </span>

@@ -84,16 +84,20 @@ export function StageRail({ stages }: { stages: DiagnosticStage[] }) {
                 {stage.items.map((item) => {
                   const state = itemState(item);
                   return (
-                    <li
-                      key={item.documentTypeId}
-                      className="flex items-center gap-2 text-sm text-text-secondary"
-                    >
-                      <ItemIcon state={state} />
-                      <span className={state === "present" ? "" : "text-text-muted"}>
-                        {item.name}
-                      </span>
-                      {!item.required && (
-                        <span className="text-xs text-text-muted">· no exigido</span>
+                    <li key={item.documentTypeId} className="text-sm text-text-secondary">
+                      <div className="flex items-center gap-2">
+                        <ItemIcon state={state} />
+                        <span className={state === "present" ? "" : "text-text-muted"}>
+                          {item.name}
+                        </span>
+                        {!item.required && (
+                          <span className="text-xs text-text-muted">· no exigido</span>
+                        )}
+                      </div>
+                      {/* Sangrada bajo el nombre, alineada con el texto y no con
+                          el icono: el ítem sigue marcado como falta. */}
+                      {item.note && (
+                        <p className="ml-[22px] mt-0.5 text-xs text-text-muted">{item.note}</p>
                       )}
                     </li>
                   );

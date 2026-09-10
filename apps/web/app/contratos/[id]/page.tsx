@@ -111,7 +111,7 @@ export default async function ContratoDetallePage({ params }: { params: { id: st
         <Field label="Modalidad" value={contract.contractType.name} />
       </div>
 
-      <ContractSubnav contractId={contract.id} />
+      <ContractSubnav contractId={contract.id} active="resumen" />
 
       <section className="rounded-lg border border-border bg-surface p-5">
         <div className="flex items-center justify-between gap-4">

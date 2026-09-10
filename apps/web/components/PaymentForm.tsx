@@ -10,6 +10,7 @@ import {
   toPaymentPayload,
   type PaymentFormValues,
 } from "@/lib/payment-form";
+import { MoneyInput } from "@/components/MoneyInput";
 
 // Formulario compartido por crear y editar un pago, igual que ContractForm. La
 // única diferencia entre ambos flujos es qué hace `onSubmit`: POST o PATCH.
@@ -94,12 +95,11 @@ export function PaymentForm({
         </Field>
 
         <Field label="Valor">
-          <input
+          <MoneyInput
             required
-            inputMode="decimal"
             value={form.value}
-            onChange={(e) => update("value", e.target.value)}
-            placeholder="50000000"
+            onChange={(plain) => update("value", plain)}
+            placeholder="50.000.000"
             className={`${inputClass} font-mono`}
           />
         </Field>

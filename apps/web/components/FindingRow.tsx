@@ -12,7 +12,15 @@ export function FindingRow({ finding, contractId }: { finding: Finding; contract
   return (
     <article className="rounded-lg border border-border bg-surface p-5">
       <div className="flex items-start justify-between gap-4">
-        <p className="text-sm text-text-primary">{finding.message}</p>
+        <div className="min-w-0">
+          <p className="text-sm text-text-primary">{finding.message}</p>
+          {/* La nota explica el hallazgo, no lo atenúa: va en secundario y
+              debajo, para que el enunciado de la regla siga siendo lo primero
+              que se lee. */}
+          {finding.note && (
+            <p className="mt-1.5 text-xs text-text-secondary">{finding.note}</p>
+          )}
+        </div>
         <span
           className={`inline-flex shrink-0 items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-medium ${severity.badge}`}
         >

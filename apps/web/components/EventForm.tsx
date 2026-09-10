@@ -15,6 +15,7 @@ import {
   toEventPayload,
   type EventFormValues,
 } from "@/lib/event-form";
+import { MoneyInput } from "@/components/MoneyInput";
 
 // Formulario compartido por crear y editar, igual que ContractForm/PaymentForm.
 //
@@ -153,11 +154,13 @@ export function EventForm({
         <div className="grid grid-cols-2 gap-4">
           {fields.valueDelta && (
             <Field label="Efecto en el valor" hint="opcional, negativo si reduce">
-              <input
-                inputMode="decimal"
+              {/* Único campo de dinero con signo: un otrosí puede corregir
+                  el valor a la baja (ver signedMoney en el API). */}
+              <MoneyInput
+                allowNegative
                 value={form.valueDelta}
-                onChange={(e) => update("valueDelta", e.target.value)}
-                placeholder="15000000"
+                onChange={(plain) => update("valueDelta", plain)}
+                placeholder="15.000.000"
                 className={`${inputClass} font-mono`}
               />
             </Field>

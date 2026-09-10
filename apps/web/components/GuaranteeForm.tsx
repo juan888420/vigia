@@ -11,6 +11,7 @@ import {
   toGuaranteePayload,
   type GuaranteeFormValues,
 } from "@/lib/guarantee-form";
+import { MoneyInput } from "@/components/MoneyInput";
 
 // Los eventos amparables llegan por props desde el server component, así que
 // el select no depende de un fetch en cliente ni puede quedarse vacío por un
@@ -141,11 +142,10 @@ export function GuaranteeForm({
         </Field>
 
         <Field label="Valor asegurado" hint="opcional">
-          <input
-            inputMode="decimal"
+          <MoneyInput
             value={form.insuredValue}
-            onChange={(e) => update("insuredValue", e.target.value)}
-            placeholder="19999654.90"
+            onChange={(plain) => update("insuredValue", plain)}
+            placeholder="19.999.654,90"
             className={`${inputClass} font-mono`}
           />
         </Field>

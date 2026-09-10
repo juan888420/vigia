@@ -284,6 +284,10 @@ export interface Finding {
   severity: FindingSeverity;
   message: string;
   references: FindingReference[];
+  /** Aclaración del motor cuando el hallazgo se leería como contradicción con
+   *  otra parte del diagnóstico (el CDP/RP registrado en Presupuesto cuyo PDF
+   *  todavía no se ha subido). No cambia la severidad ni el conteo. */
+  note?: string;
 }
 
 /** Tres situaciones distintas, no un valor con posible error: ver el motor
@@ -306,6 +310,9 @@ export interface DiagnosticStageItem {
   name: string;
   required: boolean;
   present: boolean;
+  /** Misma aclaración que en Finding, para el ítem del riel. El ítem sigue
+   *  ausente y sigue restando en el contador de la etapa. */
+  note?: string;
 }
 
 /** Completitud de soportes de UN pago. Los requisitos que se exigen una vez

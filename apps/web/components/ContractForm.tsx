@@ -12,6 +12,7 @@ import {
   type ContractFormValues,
 } from "@/lib/contract-form";
 import type { ContractPayload } from "@/lib/api";
+import { MoneyInput } from "@/components/MoneyInput";
 
 // Formulario compartido por /contratos/nuevo y /contratos/[id]/editar. La única
 // diferencia entre ambos es qué hace `onSubmit`: POST o PATCH.
@@ -227,21 +228,19 @@ export function ContractForm({
 
       <div className="grid grid-cols-2 gap-4">
         <Field label="Valor inicial">
-          <input
+          <MoneyInput
             required
-            inputMode="decimal"
             value={form.initialValue}
-            onChange={(e) => update("initialValue", e.target.value)}
-            placeholder="10945259"
+            onChange={(plain) => update("initialValue", plain)}
+            placeholder="10.945.259"
             className={`${inputClass} font-mono`}
           />
         </Field>
 
         <Field label="Anticipo" hint="opcional">
-          <input
-            inputMode="decimal"
+          <MoneyInput
             value={form.advanceValue}
-            onChange={(e) => update("advanceValue", e.target.value)}
+            onChange={(plain) => update("advanceValue", plain)}
             className={`${inputClass} font-mono`}
           />
         </Field>

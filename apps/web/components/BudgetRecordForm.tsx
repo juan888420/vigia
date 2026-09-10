@@ -11,6 +11,7 @@ import {
   toBudgetRecordPayload,
   type BudgetRecordFormValues,
 } from "@/lib/budget-form";
+import { MoneyInput } from "@/components/MoneyInput";
 
 // Los eventos que pueden respaldarse llegan por props desde el server
 // component, así que el select no depende de un fetch en cliente. La opción
@@ -112,12 +113,11 @@ export function BudgetRecordForm({
 
       <div className="grid grid-cols-2 gap-4">
         <Field label="Valor">
-          <input
+          <MoneyInput
             required
-            inputMode="decimal"
             value={form.value}
-            onChange={(e) => update("value", e.target.value)}
-            placeholder="547262975"
+            onChange={(plain) => update("value", plain)}
+            placeholder="547.262.975"
             className={`${inputClass} font-mono`}
           />
         </Field>
