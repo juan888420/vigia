@@ -1,6 +1,8 @@
 // Cliente del API real. Es la única fuente de datos de la app: el wireframe
 // con datos mock ya no existe.
 
+import { authHeader } from "./auth-client";
+
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3333";
 
 export interface Office {
@@ -560,4 +562,179 @@ export function formatMoney(value: string | null) {
 
 export function getDiagnostic(contractId: string) {
   return request<Diagnostic>(`/contratos/${contractId}/diagnostico`);
+}
+
+// ── Sesión ──────────────────────────────────────────────────────────────────
+
+/** Única ruta pública de autenticación del API: no hay registro ni
+ *  recuperación de contraseña. El token se guarda en el navegador desde la
+ *  página de login, no aquí — este módulo no toca localStorage. */
+export function login(email: string, password: string) {
+  return request<{ token: string }>("/auth/login", {
+    method: "POST",
+    body: JSON.stringify({ email, password }),
+  });
+}
+
+// ── Clasificación y extracción con IA ───────────────────────────────────────
+// Estas tres llamadas se salen del patrón de `request()` por dos motivos
+// distintos.
+//
+// Las dos primeras, porque suben un archivo: el `Content-Type: application/json`
+// que `request()` fija sirve para todo el CRUD y aquí rompería el multipart (el
+// navegador tiene que poner él mismo el boundary).
+//
+// Las TRES, porque son las únicas rutas autenticadas del API y por tanto las
+// únicas que mandan Authorization. Las de IA no lo exigen por el dato —no
+// escriben nada— sino por el gasto: cada una consume tokens de pago. El resto
+// del CRUD sigue sin token, que es una decisión aparte y deliberada.
+
+/** Resumen del tipo documental tal como lo devuelve /clasificar: sale del
+ *  catálogo completo, sin pasar por DocumentRequirement, así que no trae
+ *  `required` ni `appliesToEachPayment` — la IA clasifica contra los 30 tipos,
+ *  no contra los que esta modalidad exige. */
+export interface ClassifiedDocumentType {
+  id: string;
+  code: string;
+  name: string;
+  stage: ContractStage;
+  fileLabel: string;
+}
+
+/** Metadatos del archivo que el API devolvió tras leerlo. `contentHash` lo
+ *  calcula el servidor sobre el PDF recibido; el cliente lo reenvía tal cual a
+ *  /documentos/confirmar en vez de rehashear el archivo por su cuenta. */
+export interface IntakeFile {
+  originalFileName: string;
+  mimeType: string;
+  fileSize: number;
+  contentHash: string;
+}
+
+/**
+ * De dónde sacó el modelo el contenido del documento.
+ *
+ * TEXT_LAYER  — el PDF traía capa de texto y se le mandó el texto.
+ * PAGE_IMAGES — el PDF estaba escaneado y se le mandaron las páginas.
+ *
+ * No es un detalle de implementación: quien revisa una propuesta tiene que
+ * saber si salió de un texto exacto o de una imagen interpretada, porque no se
+ * leen con la misma fiabilidad.
+ */
+export type ContentSource = "TEXT_LAYER" | "PAGE_IMAGES";
+
+export interface IntakeExtraction {
+  characters: number;
+  pages: number;
+  truncated: boolean;
+  source: ContentSource;
+}
+
+export interface ClassificationResult {
+  contractId: string;
+  file: IntakeFile;
+  extraction: IntakeExtraction;
+  proposal: {
+    documentTypeId: string;
+    documentType: ClassifiedDocumentType;
+    confidence: number;
+    reasoning: string;
+  };
+  model: string;
+  /** Siempre false: /clasificar propone, no guarda. Viene en la respuesta para
+   *  que quede explícito en el contrato del endpoint, no solo en la doc. */
+  persisted: boolean;
+}
+
+/** Los cuatro campos que la IA lee de un otrosí. `type` no está: elegir entre
+ *  AMENDMENT, ADDITION y EXTENSION es criterio de la oficina, y el API no lo
+ *  propone nunca. */
+export interface AmendmentFieldConfidence {
+  sequenceNumber: number | null;
+  signatureDate: number | null;
+  valueDelta: number | null;
+  daysDelta: number | null;
+}
+
+export interface ExtractionResult {
+  contractId: string;
+  documentType: "OTROSI";
+  file: IntakeFile;
+  extraction: IntakeExtraction;
+  /** El modelo puede decir que el documento no es un otrosí. Es una respuesta
+   *  legítima —la alternativa era que inventara los campos—, no un fallo. */
+  looksLikeAmendment: boolean;
+  proposal: {
+    sequenceNumber: number | null;
+    signatureDate: string | null;
+    /** Monto plano CON signo: un otrosí puede corregir el valor a la baja. */
+    valueDelta: string | null;
+    daysDelta: number | null;
+    /** Inconsistencias que la IA encontró y NO resolvió. Null si no halló
+     *  ninguna. */
+    notes: string | null;
+    confidence: number;
+    fieldConfidence: AmendmentFieldConfidence;
+  };
+  model: string;
+  effort: string;
+  persisted: boolean;
+}
+
+/** El body de /documentos/confirmar. `source`, `validatedAt` y `validatedById`
+ *  NO están y no pueden estarlo: el API los fija él mismo y rechaza con 400
+ *  cualquier body que los incluya. */
+export interface DocumentConfirmationPayload {
+  documentTypeId: string;
+  eventId: string | null;
+  aiConfidence: number;
+  aiNotes: string | null;
+  originalFileName: string;
+  storagePath: string;
+  mimeType: string | null;
+  fileSize: number | null;
+  contentHash: string | null;
+}
+
+/** El multipart lo arma el navegador: no se fija `Content-Type` a mano porque
+ *  hay que dejar que añada el boundary. El único header explícito es el de
+ *  autenticación. */
+async function uploadPdf<T>(path: string, file: File): Promise<T> {
+  const body = new FormData();
+  body.append("file", file);
+
+  const response = await fetch(`${API_URL}${path}`, {
+    method: "POST",
+    body,
+    cache: "no-store",
+    headers: authHeader(),
+  });
+
+  if (!response.ok) {
+    const payload = await response.json().catch(() => null);
+    throw new ApiError(
+      payload?.error ?? payload?.message ?? `Error ${response.status}`,
+      response.status,
+    );
+  }
+
+  return response.json() as Promise<T>;
+}
+
+export function classifyDocument(contractId: string, file: File) {
+  return uploadPdf<ClassificationResult>(`/contratos/${contractId}/documentos/clasificar`, file);
+}
+
+export function extractDocument(contractId: string, file: File) {
+  return uploadPdf<ExtractionResult>(`/contratos/${contractId}/documentos/extraer`, file);
+}
+
+/** La segunda mitad del flujo del README: aquí la propuesta de la IA se
+ *  convierte en dato. Única llamada autenticada de la app. */
+export function confirmDocument(contractId: string, input: DocumentConfirmationPayload) {
+  return request<ContractDocument>(`/contratos/${contractId}/documentos/confirmar`, {
+    method: "POST",
+    headers: authHeader(),
+    body: JSON.stringify(input),
+  });
 }

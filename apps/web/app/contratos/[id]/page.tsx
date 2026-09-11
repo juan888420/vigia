@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft, Pencil } from "lucide-react";
+import { ArrowLeft, CheckCircle2, Pencil } from "lucide-react";
 import { ApiError, formatMoney, getContract, getDiagnostic } from "@/lib/api";
 import type { CurrentEndDate } from "@/lib/api";
 import { STATUS_LABELS, STATUS_STYLES } from "@/lib/diagnostic";
@@ -58,7 +58,16 @@ function Field({ label, value }: { label: string; value: string | null }) {
   );
 }
 
-export default async function ContratoDetallePage({ params }: { params: { id: string } }) {
+export default async function ContratoDetallePage({
+  params,
+  searchParams,
+}: {
+  params: { id: string };
+  /** `?documento=agregado` lo pone el flujo de IA al confirmar. Es solo el
+   *  acuse de recibo: lo que de verdad demuestra que el documento entró es el
+   *  diagnóstico de abajo, que se recalcula en esta misma carga. */
+  searchParams: { documento?: string };
+}) {
   let contract;
   let diagnostic;
   try {
@@ -112,6 +121,16 @@ export default async function ContratoDetallePage({ params }: { params: { id: st
       </div>
 
       <ContractSubnav contractId={contract.id} active="resumen" />
+
+      {searchParams.documento === "agregado" && (
+        <div className="mb-5 flex items-start gap-2 rounded-lg border border-status-al-dia-dim bg-status-al-dia-dim/40 px-3 py-2.5 text-sm text-status-al-dia">
+          <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+          <p>
+            Documento registrado junto con su evento. El diagnóstico de abajo ya lo tiene en
+            cuenta.
+          </p>
+        </div>
+      )}
 
       <section className="rounded-lg border border-border bg-surface p-5">
         <div className="flex items-center justify-between gap-4">

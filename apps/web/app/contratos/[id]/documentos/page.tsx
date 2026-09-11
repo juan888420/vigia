@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft, Plus } from "lucide-react";
+import { ArrowLeft, Plus, Sparkles } from "lucide-react";
 import {
   ApiError,
   getContract,
@@ -71,13 +71,25 @@ export default async function DocumentosPage({ params }: { params: { id: string 
           <h1 className="mt-1 text-lg font-medium text-text-primary">Documentos</h1>
           <p className="mt-1 max-w-md text-sm text-text-secondary">{contract.object}</p>
         </div>
-        <Link
-          href={`/contratos/${contract.id}/documentos/nuevo`}
-          className="inline-flex shrink-0 items-center gap-1.5 rounded-md bg-accent px-3 py-1.5 text-sm font-medium text-base transition-colors hover:bg-accent/80"
-        >
-          <Plus className="h-3.5 w-3.5" />
-          Registrar documento
-        </Link>
+        {/* Dos caminos al mismo sitio. El de IA va primero porque es el que
+            ahorra tecleo, pero el manual sigue siendo el que funciona siempre:
+            un escaneo o un tipo sin extractor acaban allí de todos modos. */}
+        <div className="flex shrink-0 items-center gap-2">
+          <Link
+            href={`/contratos/${contract.id}/documentos/nuevo`}
+            className="inline-flex items-center gap-1.5 rounded-md border border-border-strong px-3 py-1.5 text-sm text-text-secondary transition-colors hover:border-accent hover:text-text-primary"
+          >
+            <Plus className="h-3.5 w-3.5" />
+            Registrar a mano
+          </Link>
+          <Link
+            href={`/contratos/${contract.id}/documentos/nuevo-ia`}
+            className="inline-flex items-center gap-1.5 rounded-md bg-accent px-3 py-1.5 text-sm font-medium text-base transition-colors hover:bg-accent/80"
+          >
+            <Sparkles className="h-3.5 w-3.5" />
+            Clasificar con IA
+          </Link>
+        </div>
       </div>
 
       <ContractSubnav contractId={contract.id} active="documentos" />
@@ -86,10 +98,10 @@ export default async function DocumentosPage({ params }: { params: { id: string 
         <div className="rounded-lg border border-dashed border-border px-6 py-12 text-center">
           <p className="text-sm text-text-secondary">Aún no hay documentos registrados.</p>
           <Link
-            href={`/contratos/${contract.id}/documentos/nuevo`}
+            href={`/contratos/${contract.id}/documentos/nuevo-ia`}
             className="mt-2 inline-block text-sm text-accent hover:underline"
           >
-            Registrar el primero
+            Subir el primero y clasificarlo con IA
           </Link>
         </div>
       ) : (

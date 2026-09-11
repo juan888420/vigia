@@ -2,12 +2,18 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import { ApiError, getContract, listEvents, listGuarantees, listPayments } from "@/lib/api";
-import { buildLinkOptions } from "@/lib/document-form";
+import { buildLinkOptions, EMPTY_DOCUMENT_FORM } from "@/lib/document-form";
 import { NewDocumentForm } from "./NewDocumentForm";
 
 export const dynamic = "force-dynamic";
 
-export default async function NuevoDocumentoPage({ params }: { params: { id: string } }) {
+export default async function NuevoDocumentoPage({
+  params,
+  searchParams,
+}: {
+  params: { id: string };
+  searchParams: { tipo?: string };
+}) {
   let contract;
   let payments;
   let events;
@@ -40,10 +46,20 @@ export default async function NuevoDocumentoPage({ params }: { params: { id: str
         escribe a mano.
       </p>
 
+      {/* `?tipo=` es por donde entra el flujo de IA cuando clasifica un tipo
+          para el que todavía no hay extracción: se prellena el tipo documental
+          y NADA más, porque nada más ha propuesto la IA. Un id inexistente
+          deja el select en "Seleccionar...", que es el comportamiento
+          correcto: el catálogo es la única fuente de tipos válidos. */}
       <NewDocumentForm
         contractId={contract.id}
         contractTypeId={contract.contractType.id}
         linkOptions={buildLinkOptions(payments, events, guarantees)}
+        initialValues={
+          searchParams.tipo
+            ? { ...EMPTY_DOCUMENT_FORM, documentTypeId: searchParams.tipo }
+            : undefined
+        }
       />
     </div>
   );
