@@ -2,8 +2,9 @@ import type { FastifyInstance } from "fastify";
 import Anthropic from "@anthropic-ai/sdk";
 import { jsonSchemaOutputFormat } from "@anthropic-ai/sdk/helpers/json-schema";
 import { prisma } from "../lib/prisma";
-import { getAnthropicClient, isAnthropicConfigured } from "../lib/anthropic";
-import { intakePdf } from "../lib/pdf-intake";
+import { getAnthropicClient, getModel, isAnthropicConfigured } from "../lib/anthropic";
+import { requireAuth } from "../lib/auth";
+import { buildUserContent, intakePdf, sourceNotice, type PdfIntake } from "../lib/pdf-intake";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Clasificación documental con IA — el ÚNICO punto de IA del sistema.
@@ -19,10 +20,6 @@ import { intakePdf } from "../lib/pdf-intake";
 // coteja contra los ids que se le pasaron, y si no coincide se trata como
 // respuesta inválida.
 // ─────────────────────────────────────────────────────────────────────────────
-
-/** El modelo por defecto de Anthropic hoy. Constante para que cambiarlo sea
- *  una línea y quede en el diff. */
-const MODEL = "claude-opus-5";
 
 const SYSTEM_PROMPT = [
   "Eres un clasificador de documentos de expedientes de contratación pública colombiana.",
@@ -76,18 +73,24 @@ function renderCatalog(catalog: CatalogEntry[]): string {
   return catalog.map((type) => `${type.id} | ${type.code} | ${type.name}`).join("\n");
 }
 
-function buildUserPrompt(catalog: CatalogEntry[], text: string): string {
-  return [
+/** El catálogo va siempre; el documento solo cuando llega como TEXTO. En la
+ *  vía de imagen el PDF viaja en su propio bloque `document` y aquí queda solo
+ *  la instrucción, precedida del aviso de qué está viendo el modelo. */
+function buildUserPrompt(catalog: CatalogEntry[], intake: PdfIntake): string {
+  const lines = [
     "CATÁLOGO DE TIPOS DOCUMENTALES (id | code | nombre):",
     renderCatalog(catalog),
     "",
-    "TEXTO EXTRAÍDO DEL DOCUMENTO:",
-    "<documento>",
-    text,
-    "</documento>",
-    "",
-    "Clasifica el documento en uno de los tipos del catálogo.",
-  ].join("\n");
+  ];
+
+  if (intake.source === "TEXT_LAYER") {
+    lines.push("TEXTO EXTRAÍDO DEL DOCUMENTO:", "<documento>", intake.text, "</documento>", "");
+  } else {
+    lines.push(sourceNotice(intake), "");
+  }
+
+  lines.push("Clasifica el documento en uno de los tipos del catálogo.");
+  return lines.join("\n");
 }
 
 /** La respuesta del modelo no se cree: se comprueba. `documentTypeId` tiene
@@ -134,6 +137,16 @@ function validateProposal(
 export async function classificationRoutes(app: FastifyInstance) {
   app.post<{ Params: { contractId: string } }>(
     "/contratos/:contractId/documentos/clasificar",
+    // Exige identidad ANTES de tocar nada. No es por el dato —esta ruta no
+    // escribe— sino por el gasto: cada llamada consume tokens de la API de
+    // Claude, que se pagan. Un endpoint abierto que cuesta dinero por petición
+    // es una factura a disposición de cualquiera que conozca la URL, y el CORS
+    // no lo impide: protege al navegador, no al API (un curl pasa igual).
+    //
+    // Que sea `preHandler` es la mitad importante: corre antes del handler, así
+    // que un 401 ocurre antes de leer el multipart y mucho antes de llamar al
+    // modelo. El PDF ni se procesa.
+    { preHandler: requireAuth },
     async (request, reply) => {
       if (!isAnthropicConfigured()) {
         return reply.status(503).send({
@@ -157,7 +170,7 @@ export async function classificationRoutes(app: FastifyInstance) {
       if (!received.ok) {
         return reply.status(received.failure.status).send(received.failure.body);
       }
-      const { file, extraction, text } = received.intake;
+      const { file, extraction } = received.intake;
 
       // ── El catálogo ──────────────────────────────────────────────────────
       const catalog = await prisma.documentType.findMany({
@@ -171,12 +184,18 @@ export async function classificationRoutes(app: FastifyInstance) {
       }
 
       // ── La clasificación ─────────────────────────────────────────────────
+      // Se resuelve una vez y se reutiliza en la respuesta: si `ANTHROPIC_MODEL`
+      // cambiara entre las dos lecturas, el `model` devuelto no sería el que
+      // de verdad clasificó.
+      const model = getModel();
+
       let parsedOutput: unknown;
       try {
         const message = await getAnthropicClient().messages.parse({
-          model: MODEL,
-          // Holgado para una respuesta de tres campos porque en Opus 5 el
-          // razonamiento adaptativo también consume output_tokens.
+          model,
+          // Holgado para una respuesta de tres campos porque el razonamiento
+          // adaptativo —activo por defecto en Sonnet 5, igual que en Opus 5—
+          // también consume output_tokens.
           max_tokens: 4096,
           system: SYSTEM_PROMPT,
           output_config: {
@@ -184,7 +203,12 @@ export async function classificationRoutes(app: FastifyInstance) {
             effort: "low",
             format: jsonSchemaOutputFormat(CLASSIFICATION_SCHEMA),
           },
-          messages: [{ role: "user", content: buildUserPrompt(catalog, text) }],
+          messages: [
+            {
+              role: "user",
+              content: buildUserContent(received.intake, buildUserPrompt(catalog, received.intake)),
+            },
+          ],
         });
 
         // Una negativa del modelo NO es una clasificación. Se comprueba antes
@@ -243,7 +267,7 @@ export async function classificationRoutes(app: FastifyInstance) {
           confidence: validation.proposal.confidence,
           reasoning: validation.proposal.reasoning,
         },
-        model: MODEL,
+        model,
         // Explícito en la respuesta, no solo en la documentación: quien consuma
         // este endpoint tiene que saber que todavía no hay nada guardado y que
         // el documento solo existe cuando el usuario confirma contra

@@ -2,8 +2,9 @@ import type { FastifyInstance } from "fastify";
 import Anthropic from "@anthropic-ai/sdk";
 import { jsonSchemaOutputFormat } from "@anthropic-ai/sdk/helpers/json-schema";
 import { prisma } from "../lib/prisma";
-import { getAnthropicClient, isAnthropicConfigured } from "../lib/anthropic";
-import { intakePdf } from "../lib/pdf-intake";
+import { getAnthropicClient, getModel, isAnthropicConfigured } from "../lib/anthropic";
+import { requireAuth } from "../lib/auth";
+import { buildUserContent, intakePdf, sourceNotice, type PdfIntake } from "../lib/pdf-intake";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Extracción de campos con IA — segundo punto de IA del sistema, y por ahora
@@ -31,14 +32,25 @@ import { intakePdf } from "../lib/pdf-intake";
 //     del motor de reglas, con los datos ya validados por una persona.
 // ─────────────────────────────────────────────────────────────────────────────
 
-const MODEL = "claude-opus-5";
-
 /** Más alto que en /clasificar (que usa "low"): aquí hay que leer cifras, casar
  *  fechas y detectar que dos partes del documento se contradicen. Es la parte
  *  del sistema donde un error se convierte en plata mal registrada. */
-const EFFORT = "high";
+export const EFFORT = "high";
 
-const SYSTEM_PROMPT = [
+// ─────────────────────────────────────────────────────────────────────────────
+// Por qué `EFFORT`, `SYSTEM_PROMPT`, `EXTRACTION_SCHEMA` y `validateExtraction`
+// están exportados aunque nada dentro de `src/` los importe:
+//
+// Los usa apps/api/scripts/probe-scanned-schema.ts, la prueba que comprueba si
+// el mismo contrato estricto se sostiene cuando el documento llega como imagen
+// en vez de como texto. Copiarlos al script los habría dejado divergir del día
+// siguiente, y entonces la prueba ya no diría nada sobre ESTA ruta.
+//
+// No los borres por "no tener consumidores": el consumidor está fuera del
+// directorio que compila el tsconfig.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export const SYSTEM_PROMPT = [
   "Eres un asistente que lee otrosíes (actas de modificación) de contratos estatales colombianos y extrae sus campos.",
   "",
   "Reglas estrictas:",
@@ -58,10 +70,20 @@ const SYSTEM_PROMPT = [
   "Sobre `signatureDate`: la fecha en que se firma o suscribe el acta, en formato YYYY-MM-DD. No es la fecha de inicio del contrato ni la fecha hasta la que se prorroga.",
   "",
   "Sobre `notes` — es el campo más importante de tu respuesta:",
-  "- Señala aquí CUALQUIER ambigüedad, contradicción o dato dudoso: fechas que no concuerdan entre el encabezado y el cuerpo, cifras que aparecen distintas en números y en letras, valores que no cuadran con la suma, referencias a documentos que no están.",
+  "- Revisa el documento COMPLETO, no solo las partes de donde salen los cuatro campos que extraes. Una inconsistencia en una cláusula que no afecta a ninguno de esos campos sigue siendo relevante y va aquí.",
+  "- Señala CUALQUIER inconsistencia FACTUAL entre dos partes del documento, o entre el documento y su propio encabezado. En particular:",
+  "  · Fechas que no concuerdan entre el encabezado, el cuerpo y las cláusulas.",
+  "  · Valores o cifras que aparecen distintos en dos sitios, o en números y en letras, o que no cuadran con la suma de sus componentes.",
+  "  · Nombres de las partes, cédulas, NIT o cargos que cambian a lo largo del documento o están mal escritos.",
+  "  · Números de referencia que no coinciden: número de contrato, de otrosí, de CDP, de RP, de póliza, de acta.",
+  "  · Plazos y términos que aparecen con duraciones distintas en cláusulas distintas (por ejemplo, un plazo de días hábiles para cumplir una obligación que se enuncia con un número en una cláusula y con otro número en otra parte del documento).",
+  "  · Porcentajes que no corresponden a los valores sobre los que se calculan.",
+  "  · Referencias a documentos, anexos o cláusulas que no están en el documento que se te entregó.",
+  "- Cada inconsistencia va con la CITA TEXTUAL de las dos partes que no cuadran, entre comillas, tal como aparecen. Sin la cita, quien revisa no puede verificarla.",
   "- NO resuelvas la contradicción. No elijas cuál de los dos datos es el correcto ni digas cuál es 'probablemente' el bueno. Descríbela tal como aparece y deja que una persona decida.",
+  "- NO evalúes consecuencias jurídicas ni digas qué implica una inconsistencia: ni que invalida algo, ni que incumple una norma, ni que genera un riesgo, ni que hay que corregirla. Tu trabajo termina en señalar que existe y citarla.",
   "- Si el campo afectado por la contradicción no se puede leer sin elegir, déjalo en null y dilo aquí.",
-  "- Si no encontraste nada ambiguo, deja `notes` en null. No lo rellenes con un resumen del documento.",
+  "- Si no encontraste ninguna inconsistencia, deja `notes` en null. No lo rellenes con un resumen del documento, ni con observaciones sobre lo que el documento sí dice de forma coherente.",
   "",
   "Sobre las confianzas: `confidence` es tu certeza global en la extracción y `fieldConfidence` la de cada campo, entre 0 y 1. Un campo en null lleva confianza null. Si algo es ambiguo, baja la confianza en vez de forzar una respuesta segura.",
 ].join("\n");
@@ -77,7 +99,7 @@ const NULLABLE_CONFIDENCE = {
  *  "ausente" se expresa como null explícito. Que el modelo tenga que escribir
  *  null a propósito es además lo que queremos — obliga a una decisión, no a un
  *  olvido. */
-const EXTRACTION_SCHEMA = {
+export const EXTRACTION_SCHEMA = {
   type: "object",
   properties: {
     isAmendment: {
@@ -142,7 +164,7 @@ const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 
 type FieldName = "sequenceNumber" | "signatureDate" | "valueDelta" | "daysDelta";
 
-interface AmendmentExtraction {
+export interface AmendmentExtraction {
   isAmendment: boolean;
   sequenceNumber: number | null;
   signatureDate: string | null;
@@ -165,24 +187,28 @@ function isRealDate(value: string): boolean {
   return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
 }
 
-function buildUserPrompt(contractNumber: string, text: string): string {
-  return [
-    `El documento pertenece al expediente del contrato ${contractNumber}.`,
-    "",
-    "TEXTO EXTRAÍDO DEL DOCUMENTO:",
-    "<documento>",
-    text,
-    "</documento>",
-    "",
-    "Extrae los campos del otrosí.",
-  ].join("\n");
+/** Mismo encuadre en las dos vías: solo cambia si el documento llega inline
+ *  como texto o en su propio bloque. La instrucción final es idéntica a
+ *  propósito — es la que se validó en las pruebas de abstención, y cambiarla
+ *  invalidaría lo que sabemos del comportamiento del modelo. */
+function buildUserPrompt(contractNumber: string, intake: PdfIntake): string {
+  const lines = [`El documento pertenece al expediente del contrato ${contractNumber}.`, ""];
+
+  if (intake.source === "TEXT_LAYER") {
+    lines.push("TEXTO EXTRAÍDO DEL DOCUMENTO:", "<documento>", intake.text, "</documento>", "");
+  } else {
+    lines.push(sourceNotice(intake), "");
+  }
+
+  lines.push("Extrae los campos del otrosí.");
+  return lines.join("\n");
 }
 
 /** La respuesta del modelo no se cree: se comprueba. Cualquier fallo aquí es un
  *  error del endpoint, NO una extracción de baja confianza: convertir una
  *  respuesta malformada en una propuesta válida es justo lo que el flujo
  *  `IA propone → humano valida` existe para impedir. */
-function validateExtraction(
+export function validateExtraction(
   value: unknown,
 ): { ok: true; extraction: AmendmentExtraction } | { ok: false; reason: string } {
   if (typeof value !== "object" || value === null) {
@@ -259,6 +285,10 @@ function validateExtraction(
 export async function extractionRoutes(app: FastifyInstance) {
   app.post<{ Params: { contractId: string } }>(
     "/contratos/:contractId/documentos/extraer",
+    // Misma razón que en /clasificar, y aquí pesa más: esta ruta corre con
+    // `effort: "high"`, que es la llamada más cara del proyecto. `preHandler`
+    // garantiza que el 401 llegue antes del intake del PDF y antes del modelo.
+    { preHandler: requireAuth },
     async (request, reply) => {
       if (!isAnthropicConfigured()) {
         return reply.status(503).send({
@@ -279,12 +309,16 @@ export async function extractionRoutes(app: FastifyInstance) {
       if (!received.ok) {
         return reply.status(received.failure.status).send(received.failure.body);
       }
-      const { file, extraction, text } = received.intake;
+      const { file, extraction } = received.intake;
+
+      // Igual que en /clasificar: se resuelve una vez para que el `model` que
+      // se devuelve sea el que realmente leyó el documento.
+      const model = getModel();
 
       let parsedOutput: unknown;
       try {
         const message = await getAnthropicClient().messages.parse({
-          model: MODEL,
+          model,
           // Holgado: con effort alto el razonamiento adaptativo también consume
           // output_tokens, y quedarse corto trunca la respuesta a media extracción.
           max_tokens: 8192,
@@ -293,7 +327,15 @@ export async function extractionRoutes(app: FastifyInstance) {
             effort: EFFORT,
             format: jsonSchemaOutputFormat(EXTRACTION_SCHEMA),
           },
-          messages: [{ role: "user", content: buildUserPrompt(contract.number, text) }],
+          messages: [
+            {
+              role: "user",
+              content: buildUserContent(
+                received.intake,
+                buildUserPrompt(contract.number, received.intake),
+              ),
+            },
+          ],
         });
 
         if (message.stop_reason === "refusal") {
@@ -356,7 +398,7 @@ export async function extractionRoutes(app: FastifyInstance) {
           confidence,
           fieldConfidence,
         },
-        model: MODEL,
+        model,
         effort: EFFORT,
         persisted: false,
       };

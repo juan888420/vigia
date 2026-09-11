@@ -14,10 +14,11 @@ import { nonBlankText, nullableString } from "../lib/validation";
 // y se olvidan. Este endpoint es donde esa propuesta se convierte en dato, y lo
 // que lo autoriza es que una persona identificada lo pidió.
 //
-// Por eso es la PRIMERA ruta del proyecto que exige autenticación: sin
+// Fue la PRIMERA ruta del proyecto que exigió autenticación: sin
 // `request.user` no hay a quién atribuir la validación, y `validatedById`
-// sería un campo decorativo. El resto del CRUD sigue sin autenticar — activarlo
-// es una decisión aparte.
+// sería un campo decorativo. Hoy la comparten /clasificar y /extraer, que la
+// exigen por otro motivo —el coste de la API de Claude—. El resto del CRUD
+// sigue sin autenticar: activarlo es una decisión aparte.
 //
 // LA REGLA QUE SOSTIENE TODO: `validatedById` sale de `request.user.id`, que
 // viene del JWT verificado, NUNCA del body. Si el cliente pudiera mandarlo,
@@ -116,7 +117,22 @@ function serializeDocument(document: DocumentRecord) {
 export async function confirmationRoutes(app: FastifyInstance) {
   app.post<{ Params: { contractId: string }; Body: ConfirmationBody }>(
     "/contratos/:contractId/documentos/confirmar",
-    { preHandler: requireAuth, schema: confirmationSchema },
+    // `onRequest` y NO `preHandler`: en el ciclo de vida de Fastify la
+    // validación de esquema corre entre los dos. Con `preHandler`, una petición
+    // sin token y con el body mal formado recibía un 400 detallando qué campo
+    // faltaba —es decir, el esquema del body se le describía a un anónimo antes
+    // de comprobar quién era—. `onRequest` es el primer hook de todos: va antes
+    // del parseo del body, así que la respuesta a quien no se identifica es
+    // siempre 401, sea cual sea lo que mande.
+    //
+    // /clasificar y /extraer ya se comportan así sin pedirlo: no declaran
+    // `schema`, así que allí no hay validación que pueda adelantarse. Esta ruta
+    // sí lo declara, y por eso aquí el hook tiene que ser explícito.
+    //
+    // Que el hook sea más temprano no cambia nada para el handler:
+    // `request.user` se cuelga de la request igual, y sigue disponible más
+    // abajo cuando ya hay body parseado.
+    { onRequest: requireAuth, schema: confirmationSchema },
     async (request, reply) => {
       // requireAuth garantiza que esté presente; si no, no se habría llegado
       // hasta aquí. El guard es para el tipo, no para la lógica.
