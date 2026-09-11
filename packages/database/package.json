@@ -6,7 +6,8 @@
     "generate": "prisma generate",
     "migrate": "prisma migrate dev",
     "seed": "prisma db seed",
-    "studio": "prisma studio"
+    "studio": "prisma studio",
+    "create-user": "tsx --env-file=.env prisma/create-user.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
@@ -16,6 +17,7 @@
     "tsx": "^4.19.0"
   },
   "dependencies": {
-    "@prisma/client": "^5.20.0"
+    "@prisma/client": "^5.20.0",
+    "bcryptjs": "^3.0.3"
   }
 }

@@ -17,7 +17,11 @@ export default async function PagosPage({ params }: { params: { id: string } }) 
     [contract, payments, diagnostic] = await Promise.all([
       getContract(params.id),
       listPayments(params.id),
-      getDiagnostic(params.id),
+      // Con su propio .catch, no en el del Promise.all: un fallo del motor de
+      // reglas no debe tumbar esta pantalla. Sin diagnóstico se pierde el
+      // checklist de soportes, pero el listado de pagos —que es el trabajo real
+      // de la página— sigue sirviendo.
+      getDiagnostic(params.id).catch(() => null),
     ]);
   } catch (error) {
     if (error instanceof ApiError && error.status === 404) notFound();
@@ -76,7 +80,7 @@ export default async function PagosPage({ params }: { params: { id: string } }) 
               key={payment.id}
               payment={payment}
               contractId={contract.id}
-              support={diagnostic.paymentSupport.find((entry) => entry.paymentId === payment.id)}
+              support={diagnostic?.paymentSupport.find((entry) => entry.paymentId === payment.id)}
             />
           ))}
         </div>

@@ -11,6 +11,9 @@ import { documentsRoutes } from "./routes/documents";
 import { catalogRoutes } from "./routes/catalog";
 import { diagnosticsRoutes } from "./routes/diagnostics";
 import { classificationRoutes } from "./routes/classification";
+import { extractionRoutes } from "./routes/extraction";
+import { authRoutes } from "./routes/auth";
+import { confirmationRoutes } from "./routes/confirmation";
 import { prisma } from "./lib/prisma";
 
 const app = Fastify({
@@ -21,8 +24,39 @@ const app = Fastify({
   ajv: { customOptions: { removeAdditional: false, coerceTypes: false } },
 });
 
+/** Orígenes autorizados a llamar al API desde un navegador. Sale del entorno
+ *  para que un dominio de producción sea un cambio de variable y no de código;
+ *  admite varios separados por coma.
+ *
+ *  Si falta, no se autoriza NINGUNO. Falla cerrado a propósito: un fallback a
+ *  "cualquier origen" convierte un despliegue mal configurado en un API abierto
+ *  sin que nadie se entere. El aviso de abajo es para que en desarrollo se note
+ *  enseguida que falta la variable, en vez de perseguir un error de CORS en el
+ *  navegador. */
+function allowedOrigins(): string[] {
+  return (process.env.CORS_ORIGIN ?? "")
+    .split(",")
+    .map((origin) => origin.trim())
+    .filter((origin) => origin.length > 0);
+}
+
 async function main() {
-  await app.register(cors, { origin: true });
+  const origins = allowedOrigins();
+  if (origins.length === 0) {
+    app.log.warn(
+      "CORS_ORIGIN no está definido: ningún origen de navegador podrá llamar al API. Defínelo en packages/database/.env (ej. http://localhost:3000).",
+    );
+  }
+  // Lista explícita, nunca `origin: true`. Con `true` el API refleja el origen
+  // que venga en la petición, es decir, autoriza a cualquier sitio web a llamar
+  // al API desde el navegador de un usuario.
+  //
+  // Qué hace y qué NO hace esto: CORS es una protección del NAVEGADOR. Ante un
+  // origen no autorizado, el API simplemente no devuelve la cabecera
+  // Access-Control-Allow-Origin y es el navegador el que le niega la respuesta
+  // a la página. Un cliente sin navegador (curl, un script) sigue recibiendo el
+  // cuerpo: CORS no es control de acceso. Eso es trabajo de requireAuth.
+  await app.register(cors, { origin: origins });
   // Solo lo usa la clasificación documental. Un archivo por petición: este
   // endpoint clasifica UN documento, y aceptar varios en silencio haría creer
   // que se procesaron todos.
@@ -46,6 +80,15 @@ async function main() {
   // escribe nada: propone una clasificación que el usuario tiene que confirmar
   // contra POST /contratos/:id/documentos.
   await app.register(classificationRoutes);
+  // Segundo punto de IA: lee los campos de un otrosí y los propone. Tampoco
+  // escribe: ningún ContractEvent se crea desde aquí.
+  await app.register(extractionRoutes);
+  // Login. Es la única ruta pública de autenticación: no hay registro.
+  await app.register(authRoutes);
+  // Segunda mitad del flujo de IA: convierte una propuesta en dato. ÚNICA ruta
+  // del proyecto que exige autenticación hoy — sin identidad no hay
+  // `validatedById` que valga.
+  await app.register(confirmationRoutes);
 
   app.addHook("onClose", async () => {
     await prisma.$disconnect();

@@ -3,7 +3,7 @@ import { Prisma, DocumentSource } from "@prisma/client";
 import { prisma } from "../lib/prisma";
 import { decimalToString } from "../lib/serialize";
 import { prismaErrorResponse } from "../lib/prisma-errors";
-import { nullableString } from "../lib/validation";
+import { nonBlankText, nullableString } from "../lib/validation";
 
 // Archivos del expediente.
 //
@@ -69,9 +69,9 @@ const documentProperties = {
   paymentId: nullableString,
   eventId: nullableString,
   guaranteeId: nullableString,
-  originalFileName: { type: "string", minLength: 1, maxLength: 500 },
+  originalFileName: nonBlankText(500),
   standardizedName: nullableString,
-  storagePath: { type: "string", minLength: 1, maxLength: 1000 },
+  storagePath: nonBlankText(1000),
   mimeType: nullableString,
   fileSize: { type: ["integer", "null"], minimum: 0 },
   contentHash: nullableString,

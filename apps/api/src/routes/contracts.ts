@@ -6,14 +6,25 @@ import { dateOnly, decimalToString } from "../lib/serialize";
 import { prismaErrorResponse } from "../lib/prisma-errors";
 import { money, nullableDate, nullableMoney, nullableString, toDate } from "../lib/validation";
 import { resolveInitialTermDays } from "../lib/contract-term";
+import { computeCurrentValue } from "../rules/derived";
 
-// Only Contract is exposed here. Payment, ContractEvent, Guarantee and
-// ContractDocument have no routes yet, and neither does the rules engine: this
-// API returns what is stored, never a derived status, a balance or an alert.
+// Only Contract is exposed here as a writable resource.
+//
+// One exception to "this API returns only what is stored": `currentValue`.
+// It is computed here with the SAME `computeCurrentValue` the diagnostic uses
+// (rules/derived.ts), never with a second copy of the rule. The dashboard
+// lists every contract at once, and asking for a full diagnostic per row
+// would be N+1 requests to discard 97% of each payload. It stays READ-ONLY:
+// the writable columns are still only the initial conditions.
 
 const contractInclude = {
   contractType: { select: { id: true, code: true, name: true } },
   office: { select: { id: true, name: true } },
+  // Solo para derivar `currentValue`. No se serializan: los eventos tienen su
+  // propia ruta. Va en el include COMPARTIDO —y no solo en el listado— para
+  // que todas las respuestas de contrato tengan la misma forma; un campo que
+  // aparece en unas rutas y en otras no es un tipo que miente.
+  events: true,
 } satisfies Prisma.ContractInclude;
 
 type ContractWithRelations = Prisma.ContractGetPayload<{ include: typeof contractInclude }>;
@@ -28,6 +39,8 @@ function serializeContract(contract: ContractWithRelations) {
     contractorId: contract.contractorId,
     supervisor: contract.supervisor,
     initialValue: decimalToString(contract.initialValue),
+    /// Derivado, de solo lectura: valor inicial + adiciones. Ver la cabecera.
+    currentValue: decimalToString(computeCurrentValue(contract, contract.events)),
     initialTermDays: contract.initialTermDays,
     signatureDate: dateOnly(contract.signatureDate),
     startDate: dateOnly(contract.startDate),

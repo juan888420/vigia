@@ -224,3 +224,46 @@ cd packages/database
 npx prisma validate
 npx prisma migrate dev --name init   # solo cuando las decisiones pendientes estén cerradas
 ```
+
+> Al generar una migración, **usa siempre `--create-only` y revisa el SQL antes de
+> aplicarlo**. Prisma no ve los dos índices únicos parciales escritos a mano (ver
+> el comentario en `ContractEvent`) y puede proponer eliminarlos.
+
+### Crear un usuario
+
+No hay registro público: los usuarios se dan de alta a mano, uno por uno.
+
+```bash
+USER_PASSWORD='una-contraseña-larga'   npm run create-user --workspace=database --   --email juan@oficina.gov.co --name "Juan Pérez"
+```
+
+- `--office <officeId>` es opcional mientras haya una sola oficina; con varias,
+  es obligatorio y el script lista las disponibles.
+- La contraseña **no se pasa por argumento** a propósito: un argumento queda en
+  el historial del shell y en la lista de procesos. Sale de `USER_PASSWORD` o,
+  si hay terminal, se pregunta por consola.
+- Mínimo 10 caracteres. Se guarda como hash bcrypt (coste 12); la contraseña en
+  claro no se escribe en ningún sitio.
+
+### Autenticación
+
+Mínima y deliberadamente incompleta: existe para que `validatedById` sea una
+identidad verificable, no para ser un sistema de cuentas.
+
+```bash
+curl -s -X POST http://localhost:3333/auth/login   -H 'content-type: application/json'   -d '{"email":"juan@oficina.gov.co","password":"..."}'
+# -> { "token": "eyJ..." }
+
+curl -s http://localhost:3333/alguna-ruta-protegida   -H "Authorization: Bearer $TOKEN"
+```
+
+El token es un JWT HS256 con `{ userId, officeId }` y **10 horas** de vigencia,
+firmado con `JWT_SECRET`. El preHandler `requireAuth` (`apps/api/src/lib/auth.ts`)
+lo verifica y decora `request.user` con `{ id, officeId }`.
+
+**Qué NO hay, y es intencional:** registro público · recuperación y cambio de
+contraseña · roles y permisos · refresh tokens · revocación (un token robado
+vale hasta que expira; de ahí las 10 h).
+
+`requireAuth` **todavía no está aplicado a ninguna ruta**. Exigir autenticación
+en el CRUD existente es un paso aparte, pendiente de decisión.

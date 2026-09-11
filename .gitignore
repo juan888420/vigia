@@ -7,5 +7,7 @@ dist/
 packages/database/.env
 *.log
 
+test-fixtures/
+
 # Caché incremental de TypeScript: se regenera en cada build.
 *.tsbuildinfo

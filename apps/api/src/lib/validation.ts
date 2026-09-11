@@ -50,3 +50,24 @@ export const nullableSignedMoney = {
 export function toDate(value: string | null | undefined): Date | null {
   return value ? new Date(`${value}T00:00:00.000Z`) : null;
 }
+
+/**
+ * Texto obligatorio que NO puede ser solo espacios en blanco.
+ *
+ * `minLength: 1` no sirve para esto: el schema valida ANTES de que la ruta
+ * aplique `.trim()`, así que `"   "` pasa la validación con 3 caracteres y se
+ * guarda como cadena vacía. El resultado era un documento con `storagePath`
+ * vacío en una columna que es NOT NULL justamente para impedirlo.
+ *
+ * El patrón `\S` no está anclado —los patrones de JSON Schema no lo están— así
+ * que exige "al menos un carácter que no sea espacio" en cualquier posición,
+ * que es la condición correcta: el valor sigue pudiendo llevar espacios dentro
+ * ("2. CONTRACTUAL\OTROSI 1" es una ruta real del expediente).
+ *
+ * Vive aquí y no en cada ruta para que POST /contratos/:id/documentos y
+ * POST /contratos/:id/documentos/confirmar escriban la misma columna con la
+ * misma regla. El defecto original venía de que cada una declaraba la suya.
+ */
+export function nonBlankText(maxLength: number) {
+  return { type: "string", pattern: "\\S", maxLength } as const;
+}

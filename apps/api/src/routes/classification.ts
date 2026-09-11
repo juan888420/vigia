@@ -3,7 +3,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { jsonSchemaOutputFormat } from "@anthropic-ai/sdk/helpers/json-schema";
 import { prisma } from "../lib/prisma";
 import { getAnthropicClient, isAnthropicConfigured } from "../lib/anthropic";
-import { extractPdfText } from "../lib/pdf-text";
+import { intakePdf } from "../lib/pdf-intake";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Clasificación documental con IA — el ÚNICO punto de IA del sistema.
@@ -23,21 +23,6 @@ import { extractPdfText } from "../lib/pdf-text";
 /** El modelo por defecto de Anthropic hoy. Constante para que cambiarlo sea
  *  una línea y quede en el diff. */
 const MODEL = "claude-opus-5";
-
-/** Un documento sin capa de texto útil no se le manda al modelo: clasificarlo
- *  a partir de cuatro caracteres sueltos sería inventar. El umbral es bajo a
- *  propósito — no distingue "poco texto" de "ningún texto", solo descarta lo
- *  que no da ni para leer un encabezado. */
-const MIN_TEXT_LENGTH = 50;
-
-/** Tope de texto enviado al modelo. Un PDF combinado puede traer cientos de
- *  páginas y el tipo documental se decide en las primeras: mandarlo entero
- *  multiplica el costo sin mejorar la clasificación. Cuando se recorta, la
- *  respuesta lo dice (`extraction.truncated`) — nunca en silencio. */
-const MAX_TEXT_LENGTH = 120_000;
-
-/** 20 MB. Los PDFs del expediente más pesado analizado no llegan a 10. */
-const MAX_FILE_BYTES = 20 * 1024 * 1024;
 
 const SYSTEM_PROMPT = [
   "Eres un clasificador de documentos de expedientes de contratación pública colombiana.",
@@ -165,63 +150,14 @@ export async function classificationRoutes(app: FastifyInstance) {
         return reply.status(404).send({ error: "Contrato no encontrado" });
       }
 
-      // ── El archivo ───────────────────────────────────────────────────────
-      let file;
-      try {
-        file = await request.file();
-      } catch (error) {
-        if (error instanceof Error && error.message.includes("File too large")) {
-          return reply
-            .status(413)
-            .send({ error: `El archivo supera el límite de ${MAX_FILE_BYTES / 1024 / 1024} MB` });
-        }
-        return reply
-          .status(400)
-          .send({ error: "La petición debe ser multipart/form-data con un archivo PDF" });
+      // ── El archivo y su texto ────────────────────────────────────────────
+      // Mismo tramo que /extraer, en lib/pdf-intake: validación del multipart,
+      // firma %PDF-, extracción y umbral de texto mínimo.
+      const received = await intakePdf(request);
+      if (!received.ok) {
+        return reply.status(received.failure.status).send(received.failure.body);
       }
-
-      if (!file) {
-        return reply.status(400).send({ error: "Falta el archivo PDF" });
-      }
-
-      // El mimetype lo declara el cliente, así que no basta por sí solo: la
-      // comprobación real es la firma %PDF- de abajo, sobre el contenido.
-      const looksLikePdf =
-        file.mimetype === "application/pdf" || file.filename.toLowerCase().endsWith(".pdf");
-      if (!looksLikePdf) {
-        return reply
-          .status(400)
-          .send({ error: "El archivo debe ser un PDF", received: file.mimetype });
-      }
-
-      const buffer = await file.toBuffer();
-      if (buffer.subarray(0, 5).toString("latin1") !== "%PDF-") {
-        return reply
-          .status(400)
-          .send({ error: "El archivo no es un PDF válido: no empieza por %PDF-" });
-      }
-
-      // ── El texto ─────────────────────────────────────────────────────────
-      let extracted;
-      try {
-        extracted = await extractPdfText(buffer);
-      } catch (error) {
-        request.log.warn({ err: error }, "no se pudo leer el PDF");
-        return reply.status(400).send({ error: "El PDF no se pudo leer o está dañado" });
-      }
-
-      if (extracted.text.length < MIN_TEXT_LENGTH) {
-        // No se llama a Claude: sin texto no hay nada que clasificar y una
-        // respuesta suya aquí sería invención.
-        return reply.status(422).send({
-          error:
-            "El PDF no tiene una capa de texto utilizable; probablemente es un escaneo sin OCR. Esta versión no procesa documentos escaneados.",
-          extraction: { characters: extracted.text.length, pages: extracted.pages },
-        });
-      }
-
-      const truncated = extracted.text.length > MAX_TEXT_LENGTH;
-      const text = truncated ? extracted.text.slice(0, MAX_TEXT_LENGTH) : extracted.text;
+      const { file, extraction, text } = received.intake;
 
       // ── El catálogo ──────────────────────────────────────────────────────
       const catalog = await prisma.documentType.findMany({
@@ -299,16 +235,8 @@ export async function classificationRoutes(app: FastifyInstance) {
 
       return {
         contractId: contract.id,
-        file: {
-          originalFileName: file.filename,
-          mimeType: file.mimetype,
-          fileSize: buffer.length,
-        },
-        extraction: {
-          characters: extracted.text.length,
-          pages: extracted.pages,
-          truncated,
-        },
+        file,
+        extraction,
         proposal: {
           documentTypeId: validation.proposal.documentTypeId,
           documentType,

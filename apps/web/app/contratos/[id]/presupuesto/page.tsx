@@ -1,8 +1,14 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft, Plus } from "lucide-react";
-import { ApiError, formatMoney, getContract, listBudgetRecords, listEvents } from "@/lib/api";
-import { sumBudgetRecords } from "@/lib/budget-form";
+import {
+  ApiError,
+  formatMoney,
+  getContract,
+  getDiagnostic,
+  listBudgetRecords,
+  listEvents,
+} from "@/lib/api";
 import { BudgetRecordRow } from "@/components/BudgetRecordRow";
 import { ContractSubnav } from "@/components/ContractSubnav";
 
@@ -12,12 +18,18 @@ export default async function PresupuestoPage({ params }: { params: { id: string
   let contract;
   let records;
   let events;
+  let diagnostic;
   try {
-    [contract, records, events] = await Promise.all([
+    [contract, records, events, diagnostic] = await Promise.all([
       getContract(params.id),
       listBudgetRecords(params.id),
       // Para resolver a qué evento respalda cada CDP/RP y mostrarlo con nombre.
       listEvents(params.id),
+      // Los totales los calcula el motor de reglas, no esta pantalla. Si el
+      // diagnóstico falla, el resumen desaparece pero el listado —que es el
+      // trabajo real de esta página, cargar y corregir respaldos— sigue
+      // funcionando. Por eso el catch va aquí dentro y no tumba el Promise.all.
+      getDiagnostic(params.id).catch(() => null),
     ]);
   } catch (error) {
     if (error instanceof ApiError && error.status === 404) notFound();
@@ -32,9 +44,11 @@ export default async function PresupuestoPage({ params }: { params: { id: string
     );
   }
 
-  // Suma de lo cargado, no el "valor vigente" del contrato: ese lo calculará el
-  // motor de reglas a partir del valor inicial y de las adiciones.
-  const total = sumBudgetRecords(records);
+  // Los conteos SÍ salen de aquí: son cuántas filas hay de cada tipo, no una
+  // suma de dinero. Cada uno acompaña a su propia cifra — un único "en 4
+  // registros" al lado del total de RP diría que esos 4 componen esa cifra.
+  const rpCount = records.filter((record) => record.type === "RP").length;
+  const cdpCount = records.filter((record) => record.type === "CDP").length;
 
   return (
     <div className="mx-auto max-w-3xl px-8 py-10">
@@ -75,23 +89,36 @@ export default async function PresupuestoPage({ params }: { params: { id: string
         </div>
       ) : (
         <>
-          <dl className="mb-5 grid grid-cols-2 gap-x-6 rounded-lg border border-border bg-surface px-5 py-4">
-            <div>
-              <dt className="text-xs text-text-muted">Respaldo registrado</dt>
-              <dd className="mt-0.5 font-mono text-sm text-text-primary">
-                {formatMoney(total)}
-                <span className="ml-1.5 font-sans text-xs text-text-muted">
-                  en {records.length} {records.length === 1 ? "registro" : "registros"}
-                </span>
-              </dd>
-            </div>
-            <div>
-              <dt className="text-xs text-text-muted">Valor inicial del contrato</dt>
-              <dd className="mt-0.5 font-mono text-sm text-text-primary">
-                {formatMoney(contract.initialValue)}
-              </dd>
-            </div>
-          </dl>
+          {diagnostic && (
+            <dl className="mb-5 grid grid-cols-2 gap-x-6 gap-y-3 rounded-lg border border-border bg-surface px-5 py-4">
+              <div>
+                <dt className="text-xs text-text-muted">Respaldo presupuestal (RP)</dt>
+                <dd className="mt-0.5 font-mono text-sm text-text-primary">
+                  {formatMoney(diagnostic.budgetBacking.total) ?? "—"}
+                  <span className="ml-1.5 font-sans text-xs text-text-muted">
+                    en {rpCount} {rpCount === 1 ? "registro" : "registros"}
+                  </span>
+                </dd>
+              </div>
+              <div>
+                {/* Aparte y nunca sumada al RP: es la disponibilidad
+                    certificada ANTES de comprometer, no dinero adicional. */}
+                <dt className="text-xs text-text-muted">Disponibilidad previa (CDP)</dt>
+                <dd className="mt-0.5 font-mono text-sm text-text-primary">
+                  {formatMoney(diagnostic.budgetBacking.cdpTotal) ?? "—"}
+                  <span className="ml-1.5 font-sans text-xs text-text-muted">
+                    en {cdpCount} {cdpCount === 1 ? "registro" : "registros"}
+                  </span>
+                </dd>
+              </div>
+              <div>
+                <dt className="text-xs text-text-muted">Valor inicial del contrato</dt>
+                <dd className="mt-0.5 font-mono text-sm text-text-primary">
+                  {formatMoney(contract.initialValue)}
+                </dd>
+              </div>
+            </dl>
+          )}
 
           <div className="space-y-3">
             {records.map((record) => (

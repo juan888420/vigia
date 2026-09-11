@@ -3,9 +3,13 @@ import type { Contract } from "@/lib/api";
 import { formatMoney } from "@/lib/api";
 import { ContractActions } from "./ContractActions";
 
-// Muestra únicamente lo que está guardado en la base. El estado, el saldo y los
-// hallazgos no salen aquí: los calcula el motor de reglas y viven en el detalle,
-// al que se llega por el número del contrato.
+// El estado, el saldo y los hallazgos no salen aquí: los calcula el motor de
+// reglas y viven en el detalle, al que se llega por el número del contrato.
+//
+// El valor SÍ es el vigente, no el inicial. Que el listado mostrara el inicial
+// mientras el detalle mostraba el vigente hacía que el mismo contrato
+// apareciera con dos cifras distintas según la pantalla. Ambas llegan del API
+// ya calculadas: aquí no se suma ninguna adición.
 //
 // El enlace envuelve el número y no la tarjeta entera: la fila ya contiene sus
 // propias acciones (editar, eliminar), y anidar botones dentro de un enlace
@@ -18,6 +22,42 @@ function Field({ label, value }: { label: string; value: string | null }) {
       <dd className={value ? "mt-0.5 text-sm text-text-secondary" : "mt-0.5 text-sm text-text-muted"}>
         {value ?? "Sin registrar"}
       </dd>
+    </div>
+  );
+}
+
+/**
+ * Valor del contrato. Si una adición movió el valor, se muestran los dos con su
+ * etiqueta: sin ellas, dos cifras juntas no dicen cuál es cuál. Si nadie lo
+ * movió, una sola cifra sin etiqueta — rotular "vigente" un número que nunca
+ * cambió solo añade ruido a la mayoría de las filas.
+ *
+ * El inicial NO va tachado: no es un error corregido, es el dato histórico que
+ * un acto administrativo modificó.
+ */
+function ContractValue({
+  initialValue,
+  currentValue,
+}: {
+  initialValue: string;
+  currentValue: string;
+}) {
+  // Comparación de strings, no de números: ambos vienen del mismo Decimal(15,2)
+  // serializado igual, y pasarlos por float para compararlos introduciría
+  // imprecisión justo donde se decide si dos montos son el mismo.
+  if (initialValue === currentValue) {
+    return <span className="font-mono text-sm text-text-primary">{formatMoney(currentValue)}</span>;
+  }
+
+  return (
+    <div className="text-right">
+      <div className="flex items-baseline justify-end gap-1.5">
+        <span className="font-mono text-sm text-text-primary">{formatMoney(currentValue)}</span>
+        <span className="text-sm text-text-secondary">vigente</span>
+      </div>
+      <p className="mt-0.5 text-xs text-text-muted">
+        inicial: <span className="font-mono">{formatMoney(initialValue)}</span>
+      </p>
     </div>
   );
 }
@@ -53,9 +93,10 @@ export function ContractRow({ contract }: { contract: Contract }) {
         </div>
 
         <div className="flex shrink-0 flex-col items-end gap-3">
-          <span className="font-mono text-sm text-text-primary">
-            {formatMoney(contract.initialValue)}
-          </span>
+          <ContractValue
+            initialValue={contract.initialValue}
+            currentValue={contract.currentValue}
+          />
           <ContractActions id={contract.id} number={contract.number} />
         </div>
       </div>

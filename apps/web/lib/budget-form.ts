@@ -55,20 +55,9 @@ export function budgetRecordToFormValues(record: BudgetRecord): BudgetRecordForm
   };
 }
 
-/**
- * Suma de los respaldos, en centavos enteros, para no acumular error de coma
- * flotante sobre los Decimal(15,2) que devuelve el API. Se usa solo para
- * mostrar el total de lo cargado en pantalla: NO es el "valor vigente" del
- * contrato, que lo calculará el motor de reglas.
- */
-export function sumBudgetRecords(records: BudgetRecord[]): string {
-  const cents = records.reduce((total, record) => total + toCents(record.value), 0);
-  const sign = cents < 0 ? "-" : "";
-  const abs = Math.abs(cents);
-  return `${sign}${Math.floor(abs / 100)}.${String(abs % 100).padStart(2, "0")}`;
-}
-
-function toCents(value: string): number {
-  const [whole, fraction = ""] = value.split(".");
-  return Number(whole) * 100 + Number(fraction.padEnd(2, "0").slice(0, 2));
-}
+// Aquí NO se suman respaldos. Existió un `sumBudgetRecords` que sumaba todas
+// las filas sin mirar el tipo, y en CD-001-2025 daba $1.116.416.468: contaba
+// el CDP 121 y el RP 00178 como dinero distinto cuando el segundo es el
+// compromiso contra la reserva del primero. CDP y RP no son partidas
+// acumulables — la regla vive en apps/api/src/rules/derived.ts y llega a la
+// pantalla ya calculada, en `budgetBacking` del diagnóstico.

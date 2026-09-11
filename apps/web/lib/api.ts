@@ -28,6 +28,10 @@ export interface Contract {
   contractorId: string | null;
   supervisor: string | null;
   initialValue: string;
+  /** Valor vigente: inicial + adiciones. Lo calcula el motor de reglas
+   *  (computeCurrentValue), NO esta app. Es de solo lectura — no está en
+   *  ContractPayload y el API lo ignora si se envía. */
+  currentValue: string;
   initialTermDays: number | null;
   signatureDate: string | null;
   startDate: string | null;

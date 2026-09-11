@@ -54,6 +54,11 @@ model User {
   officeId  String
   email     String   @unique
   name      String
+  /// Hash bcrypt de la contraseña. NUNCA la contraseña en claro, y nunca sale
+  /// de la API: ninguna ruta lo selecciona salvo el login, que lo compara y lo
+  /// descarta. Los usuarios se crean con el script `create-user` — no hay
+  /// registro público.
+  passwordHash String
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -457,6 +462,12 @@ model ContractDocument {
   source       DocumentSource @default(MANUAL)
   /// 0.00–1.00. Solo se llena cuando source = AI_SUGGESTED.
   aiConfidence Decimal?       @db.Decimal(3, 2)
+  /// Inconsistencias que la IA señaló al leer el documento y NO resolvió por su
+  /// cuenta: fechas que se contradicen entre encabezado y cuerpo, cifras que no
+  /// cuadran, referencias a documentos ausentes. Se conserva tal cual para que
+  /// quien audite el expediente después vea lo mismo que vio quien validó.
+  /// No lo interpreta el motor de reglas: es texto para humanos.
+  aiNotes      String?
   validatedById String?
   validatedAt   DateTime?
 
