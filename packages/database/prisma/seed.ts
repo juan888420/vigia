@@ -160,6 +160,25 @@ const CD_REQUIREMENTS: RequirementSeed[] = [
     required: false,
   },
 
+  {
+    code: 'ACTA_ANTICIPO',
+    name: 'Acta de anticipo',
+    stage: ContractStage.CONTRACTUAL,
+    fileLabel: 'Acta-Anticipo',
+    description:
+      'Acta que documenta el desembolso del anticipo pactado, con su plan de ' +
+      'inversión. Aparece en el expediente real de CD-001-2025. Solo aplica ' +
+      'cuando el contrato pacta anticipo (Contract.advanceValue), igual que ' +
+      'PLAN_AMORTIZACION — de ahí required: false. No se confunde con ' +
+      'ACTA_RECIBO (recepción de la obra o el servicio) ni con ' +
+      'RECIBO_SATISFACCION (soporte de un pago concreto): el anticipo es un ' +
+      'desembolso previo a la ejecución, no la contraprestación de un pago. ' +
+      'Se añadió tras comprobar que su ausencia hacía que el clasificador lo ' +
+      'forzara a ACTA_RECIBO con confianza baja: un catálogo sin el tipo ' +
+      'correcto no produce un error, produce una clasificación equivocada.',
+    required: false,
+  },
+
   // ── SOPORTES DE PAGO ───────────────────────────────────────────────────────
   // Etapa CONTRACTUAL: ocurren durante la ejecución. Lo que los distingue del
   // resto no es la etapa sino appliesToEachPayment: se evalúan una vez por cada
