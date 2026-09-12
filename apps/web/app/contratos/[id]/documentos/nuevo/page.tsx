@@ -2,7 +2,8 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import { ApiError, getContract, listEvents, listGuarantees, listPayments } from "@/lib/api";
-import { buildLinkOptions, EMPTY_DOCUMENT_FORM } from "@/lib/document-form";
+import { manualFormInitialValues, type ManualFormParams } from "@/lib/ai-document";
+import { buildLinkOptions } from "@/lib/document-form";
 import { NewDocumentForm } from "./NewDocumentForm";
 
 export const dynamic = "force-dynamic";
@@ -12,7 +13,7 @@ export default async function NuevoDocumentoPage({
   searchParams,
 }: {
   params: { id: string };
-  searchParams: { tipo?: string };
+  searchParams: ManualFormParams;
 }) {
   let contract;
   let payments;
@@ -46,20 +47,19 @@ export default async function NuevoDocumentoPage({
         escribe a mano.
       </p>
 
-      {/* `?tipo=` es por donde entra el flujo de IA cuando clasifica un tipo
-          para el que todavía no hay extracción: se prellena el tipo documental
-          y NADA más, porque nada más ha propuesto la IA. Un id inexistente
-          deja el select en "Seleccionar...", que es el comportamiento
-          correcto: el catálogo es la única fuente de tipos válidos. */}
+      {/* La querystring es por donde entra el flujo de IA cuando clasifica un
+          tipo para el que todavía no hay extracción: trae el tipo documental y
+          los metadatos que el API ya calculó al leer el PDF (nombre original,
+          MIME, tamaño y hash). No trae `storagePath`: esa ruta la escribe el
+          funcionario mientras no haya subida de archivos.
+
+          Sin parámetros —el registro 100 % manual— esto es `undefined` y el
+          formulario arranca vacío exactamente igual que antes. */}
       <NewDocumentForm
         contractId={contract.id}
         contractTypeId={contract.contractType.id}
         linkOptions={buildLinkOptions(payments, events, guarantees)}
-        initialValues={
-          searchParams.tipo
-            ? { ...EMPTY_DOCUMENT_FORM, documentTypeId: searchParams.tipo }
-            : undefined
-        }
+        initialValues={manualFormInitialValues(searchParams)}
       />
     </div>
   );

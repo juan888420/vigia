@@ -7,6 +7,7 @@ import { AlertTriangle } from "lucide-react";
 import { listDocumentTypes, type ContractDocumentPayload, type DocumentTypeOption } from "@/lib/api";
 import {
   EMPTY_DOCUMENT_FORM,
+  formatFileSize,
   STAGE_LABELS,
   STAGE_ORDER,
   toDocumentPayload,
@@ -30,11 +31,64 @@ import {
 //
 // NO hay campos de source, aiConfidence, validatedById ni validatedAt: son del
 // flujo de clasificación con IA, que no existe todavía.
+//
+// mimeType, fileSize y contentHash tampoco son campos: se muestran cuando
+// existen y no se pueden tocar. Los calcula el API sobre los bytes del PDF, y
+// un hash tecleado a mano describiría un archivo que nadie comprobó. Llegan
+// prellenados desde el flujo de IA (por la querystring) o desde el documento
+// que se está editando; en el registro 100 % manual son null y el bloque ni
+// aparece.
 
 type CatalogState = "loading" | "ready" | "error";
 
 const inputClass =
   "w-full rounded-md border border-border bg-base px-3 py-2 text-sm text-text-primary placeholder:text-text-muted focus:border-border-strong focus:outline-none";
+
+/** Los metadatos que no se editan. Se muestran porque quien registra tiene
+ *  derecho a ver qué se va a guardar con su nombre, no para que los ajuste.
+ *  El hash va recortado —64 caracteres hexadecimales no se leen de un vistazo—
+ *  con el valor completo en el `title` para poder cotejarlo si hace falta. */
+function FileMetadata({ values }: { values: DocumentFormValues }) {
+  const rows: { label: string; value: string; title?: string }[] = [];
+  if (values.mimeType !== null) {
+    rows.push({ label: "Tipo", value: values.mimeType });
+  }
+  if (values.fileSize !== null) {
+    rows.push({
+      label: "Tamaño",
+      value: formatFileSize(values.fileSize),
+      title: `${values.fileSize} bytes`,
+    });
+  }
+  if (values.contentHash !== null) {
+    rows.push({
+      label: "Hash",
+      value: `${values.contentHash.slice(0, 12)}...`,
+      title: values.contentHash,
+    });
+  }
+
+  if (rows.length === 0) return null;
+
+  return (
+    <div className="rounded-lg border border-border bg-surface px-3 py-2.5">
+      <p className="text-xs text-text-secondary">Metadata del archivo detectada</p>
+      <dl className="mt-1.5 flex flex-wrap gap-x-5 gap-y-1">
+        {rows.map((row) => (
+          <div key={row.label} className="flex items-baseline gap-1.5">
+            <dt className="text-xs text-text-muted">{row.label}</dt>
+            <dd className="font-mono text-xs text-text-secondary" title={row.title}>
+              {row.value}
+            </dd>
+          </div>
+        ))}
+      </dl>
+      <p className="mt-1.5 text-xs text-text-muted">
+        La calculó el sistema al leer el PDF. No se edita: se guarda tal cual.
+      </p>
+    </div>
+  );
+}
 
 function Field({
   label,
@@ -212,6 +266,8 @@ export function DocumentForm({
           es lo que permite reconocer el archivo y auditar una clasificación equivocada.
         </span>
       </Field>
+
+      <FileMetadata values={form} />
 
       <Field label="Ruta en el storage">
         <input

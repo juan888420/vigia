@@ -4,7 +4,9 @@ import type {
   EventPayload,
   EventType,
   ExtractionResult,
+  IntakeFile,
 } from "./api";
+import { EMPTY_DOCUMENT_FORM, type DocumentFormValues } from "./document-form";
 import { EVENT_TYPE_LABELS } from "./event-form";
 
 // Módulo neutro (sin "use client"), igual que los demás *-form.ts: aquí vive
@@ -168,10 +170,116 @@ export function formatConfidence(value: number | null): string | null {
   return value === null ? null : `${Math.round(value * 100)} %`;
 }
 
-/** Adónde mandar a quien tiene que seguir a mano. Lleva el tipo propuesto para
- *  que el formulario manual no empiece en blanco: es lo ÚNICO que se
- *  prellena — de los demás campos la IA no ha propuesto nada. */
-export function manualFormHref(contractId: string, documentTypeId?: string): string {
+/**
+ * Adónde mandar a quien tiene que seguir a mano, y con qué ya resuelto.
+ *
+ * Va por querystring —el mismo `?tipo=` de siempre, ampliado— y no por estado
+ * en memoria a propósito: el destino es una página de servidor con
+ * `force-dynamic`, así que el enlace tiene que seguir funcionando pegado en
+ * otra pestaña o recargado. Un store de cliente se perdería en la navegación.
+ *
+ * Lo que viaja es lo que el API ya calculó: el tipo que clasificó y, si se
+ * llegó a leer el archivo, sus metadatos. Nada de esto lo propone la IA en el
+ * sentido de interpretarlo —el nombre, el tipo MIME, el tamaño y el hash son
+ * hechos del archivo recibido—, y por eso se prellenan sin pedir validación,
+ * a diferencia del tipo documental, que sí sigue siendo editable.
+ *
+ * `storagePath` NO va aquí: no hay subida de archivos todavía (README,
+ * pendiente #6) y la ruta es una decisión del funcionario, no un dato del PDF.
+ */
+export function manualFormHref(
+  contractId: string,
+  documentTypeId?: string,
+  file?: IntakeFile,
+): string {
+  const params = new URLSearchParams();
+  if (documentTypeId) params.set("tipo", documentTypeId);
+  if (file) {
+    params.set("archivo", file.originalFileName);
+    params.set("mime", file.mimeType);
+    params.set("tamano", String(file.fileSize));
+    params.set("hash", file.contentHash);
+  }
+
   const base = `/contratos/${contractId}/documentos/nuevo`;
-  return documentTypeId ? `${base}?tipo=${encodeURIComponent(documentTypeId)}` : base;
+  const query = params.toString();
+  return query === "" ? base : `${base}?${query}`;
+}
+
+/** Los parámetros que produce `manualFormHref`, tal como los recibe la página
+ *  del formulario manual.
+ *
+ *  `string[]` no es hipotético: Next entrega un array cuando el parámetro
+ *  aparece repetido en la URL, y una URL la escribe cualquiera. Tiparlo solo
+ *  como `string` dejaría un `.trim()` sobre un array, es decir una página rota
+ *  por un enlace mal pegado. */
+export interface ManualFormParams {
+  tipo?: string | string[];
+  archivo?: string | string[];
+  mime?: string | string[];
+  tamano?: string | string[];
+  hash?: string | string[];
+}
+
+/** Un entero no negativo y nada más: `Number("")` es 0 y `Number("1e9")` es un
+ *  número válido que no es lo que se escribió. */
+const BYTES_PATTERN = /^\d+$/;
+
+/** sha256 en hexadecimal, que es lo que calcula `intakePdf`. Un valor que no
+ *  tenga esa forma se descarta en vez de guardarse: el hash existe para
+ *  distinguir un duplicado real de dos archivos homónimos (README, decisión
+ *  #8), y uno inventado por quien edite la URL rompería exactamente eso. */
+const SHA256_PATTERN = /^[0-9a-f]{64}$/i;
+
+/** Un parámetro repetido se queda con la primera aparición: no hay forma de
+ *  saber cuál quiso decir quien lo repitió, y descartar el parámetro entero
+ *  obligaría a reescribir a mano un dato que sí llegó. */
+function trimmedOrNull(value: string | string[] | undefined): string | null {
+  const raw = Array.isArray(value) ? value[0] : value;
+  const trimmed = raw?.trim() ?? "";
+  return trimmed === "" ? null : trimmed;
+}
+
+/**
+ * La lectura inversa de `manualFormHref`: los parámetros de la URL vueltos
+ * valores iniciales del formulario manual.
+ *
+ * Devuelve `undefined` cuando no viene ninguno, que es el flujo 100 % manual:
+ * el formulario cae en `EMPTY_DOCUMENT_FORM` y se comporta igual que siempre.
+ *
+ * Nada de lo que llega se cree por venir en la URL. Un tipo documental
+ * inexistente deja el select en "Seleccionar...", porque el catálogo es la
+ * única fuente de tipos válidos; un tamaño o un hash con forma inválida se
+ * descartan. El API vuelve a validarlo todo de todas formas.
+ */
+export function manualFormInitialValues(params: ManualFormParams): DocumentFormValues | undefined {
+  const documentTypeId = trimmedOrNull(params.tipo);
+  const originalFileName = trimmedOrNull(params.archivo);
+  const mimeType = trimmedOrNull(params.mime);
+  const rawSize = trimmedOrNull(params.tamano);
+  const contentHash = trimmedOrNull(params.hash);
+
+  if (
+    documentTypeId === null &&
+    originalFileName === null &&
+    mimeType === null &&
+    rawSize === null &&
+    contentHash === null
+  ) {
+    return undefined;
+  }
+
+  const fileSize =
+    rawSize !== null && BYTES_PATTERN.test(rawSize) && Number.isSafeInteger(Number(rawSize))
+      ? Number(rawSize)
+      : null;
+
+  return {
+    ...EMPTY_DOCUMENT_FORM,
+    documentTypeId: documentTypeId ?? "",
+    originalFileName: originalFileName ?? "",
+    mimeType,
+    fileSize,
+    contentHash: contentHash !== null && SHA256_PATTERN.test(contentHash) ? contentHash : null,
+  };
 }

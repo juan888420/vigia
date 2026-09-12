@@ -394,8 +394,12 @@ export function AiDocumentFlow({
                 : "La lectura automática de campos solo está implementada para otrosíes. Para este tipo, el resto del registro se completa a mano — el tipo documental ya va preseleccionado."}
             </p>
             <div className="flex items-center gap-3 border-t border-border pt-5">
+              {/* Con los metadatos del archivo: el API ya los calculó al
+                  clasificar, así que volver a teclear el nombre —y no poder
+                  teclear el hash en absoluto— sería perder datos que el
+                  sistema ya tiene. */}
               <Link
-                href={manualFormHref(contractId, proposal?.documentTypeId)}
+                href={manualFormHref(contractId, proposal?.documentTypeId, classification?.file)}
                 className="rounded-md bg-accent px-4 py-2 text-sm font-medium text-base transition-colors hover:bg-accent/80"
               >
                 Continuar en formulario manual

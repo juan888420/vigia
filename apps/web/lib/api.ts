@@ -259,6 +259,12 @@ export interface ContractDocumentPayload {
   guaranteeId: string | null;
   originalFileName: string;
   storagePath: string;
+  /** Metadatos del archivo. Son null en el registro 100 % manual —nadie va a
+   *  teclear un sha256— y llegan con valor cuando el formulario se abre desde
+   *  el flujo de IA, que ya los calculó sobre los bytes recibidos. */
+  mimeType: string | null;
+  fileSize: number | null;
+  contentHash: string | null;
 }
 
 // ── Diagnóstico (motor de reglas) ───────────────────────────────────────────

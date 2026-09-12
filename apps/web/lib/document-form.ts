@@ -77,6 +77,13 @@ export interface DocumentFormValues {
   link: DocumentLink;
   originalFileName: string;
   storagePath: string;
+  /** Los tres metadatos que NO se teclean: o los calculó el API al leer el
+   *  PDF, o vienen de un documento ya guardado. El formulario los transporta y
+   *  los muestra, nunca los deja editar — un mimeType o un hash escritos a
+   *  mano describirían un archivo que nadie comprobó. */
+  mimeType: string | null;
+  fileSize: number | null;
+  contentHash: string | null;
 }
 
 export const EMPTY_DOCUMENT_FORM: DocumentFormValues = {
@@ -84,6 +91,9 @@ export const EMPTY_DOCUMENT_FORM: DocumentFormValues = {
   link: CONTRACT_LEVEL_LINK,
   originalFileName: "",
   storagePath: "",
+  mimeType: null,
+  fileSize: null,
+  contentHash: null,
 };
 
 /** Decodifica el select en las tres FK del modelo. Exactamente una queda con
@@ -98,6 +108,9 @@ export function toDocumentPayload(form: DocumentFormValues): ContractDocumentPay
     guaranteeId: kind === "guarantee" ? id : null,
     originalFileName: form.originalFileName.trim(),
     storagePath: form.storagePath.trim(),
+    mimeType: form.mimeType,
+    fileSize: form.fileSize,
+    contentHash: form.contentHash,
   };
 }
 
@@ -107,7 +120,32 @@ export function documentToFormValues(document: ContractDocument): DocumentFormVa
     link: documentLink(document),
     originalFileName: document.originalFileName,
     storagePath: document.storagePath,
+    mimeType: document.mimeType,
+    fileSize: document.fileSize,
+    contentHash: document.contentHash,
   };
+}
+
+/** Bytes a algo legible: "1,2 MB", no "1289432". El tamaño solo sirve para
+ *  reconocer el archivo de un vistazo, así que se redondea; el valor exacto es
+ *  el que viaja al API, no el que se muestra. Base 1024, que es la que reporta
+ *  el sistema operativo donde el funcionario ve el mismo archivo. */
+export function formatFileSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+
+  const units = ["KB", "MB", "GB"];
+  let value = bytes / 1024;
+  let unit = 0;
+  while (value >= 1024 && unit < units.length - 1) {
+    value /= 1024;
+    unit += 1;
+  }
+
+  // Un decimal por debajo de 10 ("1,2 MB"); por encima no aporta ("14 MB").
+  const formatted = value.toLocaleString("es-CO", {
+    maximumFractionDigits: value < 10 ? 1 : 0,
+  });
+  return `${formatted} ${units[unit]}`;
 }
 
 /** La codificación inversa de toDocumentPayload. */
